@@ -1,0 +1,64 @@
+{
+  "name": "@tracecode/tracecc",
+  "version": "0.1.0",
+  "description": "Browser-native C and C++ compiler toolchain for TraceKernel embedders",
+  "keywords": [
+    "c",
+    "c++",
+    "clang",
+    "llvm",
+    "webassembly",
+    "wasm",
+    "browser"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tracecodeapp/tracecc.git"
+  },
+  "homepage": "https://github.com/tracecodeapp/tracecc#readme",
+  "bugs": {
+    "url": "https://github.com/tracecodeapp/tracecc/issues"
+  },
+  "type": "module",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./protocol": {
+      "types": "./dist/protocol.d.ts",
+      "import": "./dist/protocol.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:toolchain": "bash scripts/build-toolchain.sh",
+    "check": "tsc -p tsconfig.json --noEmit && node scripts/check-toolchain-manifest.mjs",
+    "test": "pnpm build && node --test tests/*.test.mjs",
+    "prepare:release": "node scripts/prepare-toolchain-release.mjs",
+    "verify:release": "node scripts/verify-toolchain-release.mjs",
+    "verify:package": "npm pack --dry-run",
+    "prepack": "pnpm build"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.22.0",
+  "publishConfig": {
+    "access": "public"
+  }
+}

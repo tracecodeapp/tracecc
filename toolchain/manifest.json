@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "tracecc-source-manifest-v1",
+  "upstream": {
+    "url": "https://github.com/YoWASP/llvm-project",
+    "revision": "97196c8eeb1d495fa43bb8af2fb26af5ef5b89fb"
+  },
+  "target": "wasm32-wasip1",
+  "compilerAbi": "tracecc-fixed-wasm-o0-v1",
+  "buildInputs": {
+    "wasiSdk": "29.0",
+    "binaryen": "131",
+    "runtimeResources": {
+      "bytes": 29112320,
+      "sha256": "d95d2a2bc8408a16c0744996ac47c91bb3c63bb71b94315c9796089b6dda8555",
+      "note": "This exact sysroot/resource image is part of the compiler ABI because release PCH files record header identities."
+    },
+    "pgo": {
+      "profileSha256": "7e79a147f7fc7f100b028bdffd6c57dfaf646906e4353f653558a453f88b8b28",
+      "profileListSha256": "141a544be5a09279d87438e47f1b4ad2968223a924704fcdee433d6dfa297e56",
+      "note": "The pooled training campaign was performance-neutral overall. The deterministic v9r1 lineage retains this exact profile-use input; remove it only as a separately benchmarked change."
+    }
+  },
+  "cmake": {
+    "buildType": "MinSizeRel",
+    "assertions": false,
+    "projects": [
+      "clang",
+      "lld"
+    ],
+    "targets": [
+      "WebAssembly"
+    ],
+    "traceccOptions": {
+      "LLD_WASM_TRACECC_NO_BITCODE": true,
+      "CLANG_TRACECC_LEAN_BACKEND": true,
+      "LLVM_TRACECC_LEAN_WASM_O0": true
+    }
+  },
+  "postLink": {
+    "tool": "Binaryen wasm-opt version 131",
+    "arguments": [
+      "--all-features",
+      "--duplicate-function-elimination",
+      "--remove-unused-module-elements",
+      "-g"
+    ]
+  },
+  "candidate": {
+    "name": "v9r1",
+    "rawBytes": 37525005,
+    "rawSha256": "73551fbd1249a5721dda4ab2cff56831bad23d250323347f2f12fc726b60af9a",
+    "foldedBytes": 33478188,
+    "foldedSha256": "02de34842538466bf29e9d6cf14cd0d5e5ff519c9ba390561ccb158105d44d41",
+    "brotliBytes": 9275381
+  }
+}
