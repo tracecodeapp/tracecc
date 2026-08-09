@@ -36,7 +36,7 @@ The harness owns:
 
 - TraceKernel capabilities and syscall policy
 - learner source instrumentation and generated drivers
-- TraceCode runtime headers and exact toolchain-matched PCH/runtime objects
+- the source form of TraceCode runtime instrumentation and generated drivers
 - Judge batching, result interpretation, and product diagnostics
 - the warm compiler Worker lease and disposable learner-runner lifecycle
 
@@ -51,10 +51,27 @@ v8, warm corpus time is lower, and the memory result is inconclusive. Further
 LLVM pruning stays in the external research tree until it clears the documented
 stop rule.
 
-The generated compiler, sysroot, and resource artifacts are not committed and
-are not included in the npm package. `scripts/prepare-toolchain-release.mjs`
-creates an immutable, content-addressed release directory from an explicit
-artifact set.
+The generated compiler, sysroot, and toolchain-matched TraceCode PCH artifacts
+are not committed. They are assembled into an immutable consumer release and
+included in the npm package under `runtime-release/`. The package therefore
+owns the exact compiler substrate it was released with; an embedder chooses
+where to serve those bytes, not which independently versioned bytes to pair
+with the package.
+
+`scripts/prepare-toolchain-release.mjs` creates the base compiler release.
+After the TraceCode runtime header and PCH shards have been generated against
+that release, package them with:
+
+```sh
+TRACECC_CONSUMER_RELEASE_DIR=/path/to/content-addressed-consumer-release \
+  pnpm prepare:package-runtime
+pnpm verify:package
+```
+
+The consumer release must contain its generated
+`tracecc-consumer-lock.json` and `cpp-runtime-manifest.json`. Package
+preparation verifies every declared byte and fails closed on a stale header,
+PCH shard, compiler, or sysroot.
 
 The TraceCode harness cutover uses TraceCC for Practice, Judge, and generic
 Project compilation. Project mode supports C and C++ translation units,

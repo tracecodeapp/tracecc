@@ -36,6 +36,7 @@
   },
   "files": [
     "dist",
+    "runtime-release",
     "LICENSE",
     "README.md",
     "THIRD_PARTY_NOTICES.md"
@@ -47,8 +48,9 @@
     "test": "pnpm build && node --test tests/*.test.mjs",
     "prepare:release": "node scripts/prepare-toolchain-release.mjs",
     "verify:release": "node scripts/verify-toolchain-release.mjs",
-    "verify:package": "npm pack --dry-run",
-    "prepack": "pnpm build"
+    "prepare:package-runtime": "node scripts/prepare-package-runtime.mjs",
+    "verify:package": "node scripts/verify-package.mjs",
+    "prepack": "pnpm build && pnpm prepare:package-runtime"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

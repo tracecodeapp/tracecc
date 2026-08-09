@@ -1,6 +1,7 @@
-node_modules/
+/node_modules
 dist/
 .cache/
+/runtime-release/
 release/
 *.tgz
 .DS_Store
