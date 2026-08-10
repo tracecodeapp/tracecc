@@ -58,6 +58,17 @@ for shard in common corpus maps; do
 done
 ```
 
+Smoke-consume each generated PCH with its exact anchor source before handing
+the shards to the harness:
+
+```sh
+for shard in common corpus maps; do
+  node scripts/validate-runtime-pch.mjs toolchain/pch-compiler "$HEADER" \
+    "$OUT/tracecode_pch-codegen-$shard-event-helpers-v2.hpp.pch.source.hpp" \
+    "$OUT/tracecode_pch-codegen-$shard-event-helpers-v2.hpp.pch"
+done
+```
+
 Shard-to-asset mapping in the harness manifest: `common` → `narrow`,
 `corpus` → `broad`, `maps` → `map`.
 

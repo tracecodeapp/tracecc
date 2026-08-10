@@ -4,19 +4,38 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const compilerDirectory = resolve(process.argv[2]);
-const runtimeHeaderPath = resolve(process.argv[3]);
-const pchPath = resolve(process.argv[4]);
+const [compilerDirectoryArg, runtimeHeaderPathArg, pchSourcePathArg, pchPathArg] =
+  process.argv.slice(2);
+if (
+  !compilerDirectoryArg ||
+  !runtimeHeaderPathArg ||
+  !pchSourcePathArg ||
+  !pchPathArg
+) {
+  throw new Error(
+    "Usage: validate-runtime-pch.mjs <compiler-directory> <runtime-header> <pch-source> <pch>",
+  );
+}
+
+const compilerDirectory = resolve(compilerDirectoryArg);
+const runtimeHeaderPath = resolve(runtimeHeaderPathArg);
+const pchSourcePath = resolve(pchSourcePathArg);
+const pchPath = resolve(pchPathArg);
 const compiler = await import(
   pathToFileURL(resolve(compilerDirectory, 'bundle.js')).href
 );
 const runtimeHeader = await readFile(runtimeHeaderPath, 'utf8');
+const pchSource = await readFile(pchSourcePath, 'utf8');
 const pch = new Uint8Array(await readFile(pchPath));
 const stderr = [];
 const startedAt = performance.now();
 
 let files;
 try {
+  // The vendored Clang wrapper's first internal dry run otherwise falls back
+  // to its upstream progress logger. Prefetch quietly so TraceCC owns its CLI
+  // output and diagnostics.
+  await compiler.runLLVM(null, {}, { fetchProgress: () => {} });
   files = await compiler.runClang(
     [
       'clang++',
@@ -31,7 +50,7 @@ try {
       'main.o',
     ],
     {
-      'tracecode_pch.hpp': '#include "tracecode_runtime.hpp"\n',
+      'tracecode_pch.hpp': pchSource,
       'tracecode_runtime.hpp': runtimeHeader,
       'tracecode_pch.hpp.pch': pch,
       'main.cpp': 'int answer() { return 42; }\n',

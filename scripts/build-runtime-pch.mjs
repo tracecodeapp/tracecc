@@ -123,6 +123,9 @@ const pchSource = `#include "tracecode_runtime.hpp"\n${commonTypeAnchors}`;
 
 let files;
 try {
+  // Prefetch quietly before runClang's internal dry run so this TraceCC tool
+  // does not stream the upstream wrapper's progress label to the console.
+  await compiler.runLLVM(null, {}, { fetchProgress: () => {} });
   files = await compiler.runClang(
     [
       'clang++',
