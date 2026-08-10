@@ -50,7 +50,7 @@
     "verify:release": "node scripts/verify-toolchain-release.mjs",
     "prepare:package-runtime": "node scripts/prepare-package-runtime.mjs",
     "verify:package": "node scripts/verify-package.mjs",
-    "prepack": "pnpm build && pnpm prepare:package-runtime"
+    "prepack": "pnpm build && pnpm verify:package"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

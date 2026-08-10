@@ -52,21 +52,25 @@ LLVM pruning stays in the external research tree until it clears the documented
 stop rule.
 
 The generated compiler, sysroot, and toolchain-matched TraceCode PCH artifacts
-are not committed. They are assembled into an immutable consumer release and
-included in the npm package under `runtime-release/`. The package therefore
-owns the exact compiler substrate it was released with; an embedder chooses
-where to serve those bytes, not which independently versioned bytes to pair
-with the package.
+are assembled into an immutable consumer release and tracked under
+`runtime-release/`. The package therefore owns the exact compiler substrate it
+was released with; a clean checkout, CI, and npm packaging all verify the same
+bytes. An embedder chooses where to serve those bytes, not which independently
+versioned bytes to pair with the package.
 
 `scripts/prepare-toolchain-release.mjs` creates the base compiler release.
 After the TraceCode runtime header and PCH shards have been generated against
-that release, package them with:
+that release, intentionally regenerate the tracked package runtime with:
 
 ```sh
 TRACECC_CONSUMER_RELEASE_DIR=/path/to/content-addressed-consumer-release \
   pnpm prepare:package-runtime
 pnpm verify:package
 ```
+
+Commit the resulting content-addressed directory and `runtime-release/manifest.json`
+with the TraceCC release. Ordinary `prepack` verifies this tracked inventory; it
+does not depend on an ignored local cache.
 
 The consumer release must contain its generated
 `tracecc-consumer-lock.json` and `cpp-runtime-manifest.json`. Package
