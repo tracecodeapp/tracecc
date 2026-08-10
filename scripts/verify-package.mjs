@@ -31,7 +31,12 @@ assert.deepEqual(runtime.package, {
 assert.equal(runtime.targetPath, `cpp/tracecc/${runtime.consumerHash}`);
 assert.ok(runtime.files.length > 0);
 const runtimeRoot = join(root, "runtime-release", runtime.consumerHash);
-validateTraceCCPackageRuntimeDirectory(runtimeRoot);
+const validatedRuntime = validateTraceCCPackageRuntimeDirectory(runtimeRoot);
+assert.deepEqual(
+  runtime.files,
+  validatedRuntime.files,
+  "TraceCC package manifest must inventory every runtime file",
+);
 
 for (const file of runtime.files) {
   const bytes = readFileSync(

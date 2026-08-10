@@ -193,14 +193,21 @@ export function validateTraceCCPackageRuntimeDirectory(directory) {
   }
   validateTraceCCRuntimeManifest(manifest, lock, directory);
 
+  const files = listFiles(directory);
+  const runtimeFiles = [];
   const declared = validateConsumerLock(lock);
-  for (const file of listFiles(directory)) {
+  for (const file of files) {
+    const bytes = readFileSync(file.absolute);
+    const digest = sha256(bytes);
+    runtimeFiles.push({
+      path: file.path,
+      size: bytes.byteLength,
+      sha256: digest,
+    });
     if (file.path === "cpp-runtime-manifest.json" || file.path === "tracecc-consumer-lock.json") {
       continue;
     }
     const expected = declared.get(file.path);
-    const bytes = readFileSync(file.absolute);
-    const digest = sha256(bytes);
     if (!expected || expected.size !== bytes.byteLength || expected.sha256 !== digest) {
       throw new Error(
         `TraceCC package runtime mismatch for ${file.path}: expected ` +
@@ -215,7 +222,12 @@ export function validateTraceCCPackageRuntimeDirectory(directory) {
       `TraceCC package runtime is missing declared files: ${[...declared.keys()].join(", ")}.`,
     );
   }
-  return { consumerHash, lock, manifest };
+  return {
+    consumerHash,
+    lock,
+    manifest,
+    files: runtimeFiles,
+  };
 }
 
 export function prepareTraceCCPackageRuntime(options = {}) {
