@@ -53,7 +53,7 @@ try {
   );
   throw new Error(
     [
-      `TraceClang PCH object generation exited unsuccessfully: ${String(error)}`,
+      `TraceCC PCH object generation exited unsuccessfully: ${String(error)}`,
       diagnostic.trim(),
     ].filter(Boolean).join('\n')
   );
@@ -68,7 +68,7 @@ const objectBytes = ArrayBuffer.isView(objectValue)
     )
   : null;
 if (!objectBytes) {
-  throw new Error('TraceClang PCH object generation did not produce tracecode_pch.o');
+  throw new Error('TraceCC PCH object generation did not produce tracecode_pch.o');
 }
 
 await mkdir(dirname(outputPath), { recursive: true });

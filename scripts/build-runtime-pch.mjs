@@ -155,7 +155,7 @@ try {
   );
   throw new Error(
     [
-      `TraceClang PCH generation exited unsuccessfully: ${String(error)}`,
+      `TraceCC PCH generation exited unsuccessfully: ${String(error)}`,
       diagnostic.trim(),
     ].filter(Boolean).join('\n')
   );
@@ -169,7 +169,7 @@ if (!pch) {
   const diagnostic = new TextDecoder().decode(
     Buffer.concat(stderr.map((chunk) => Buffer.from(chunk)))
   );
-  throw new Error(`TraceClang PCH generation failed:\n${diagnostic}`);
+  throw new Error(`TraceCC PCH generation failed:\n${diagnostic}`);
 }
 
 await mkdir(dirname(outputPath), { recursive: true });
