@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
@@ -70,4 +76,19 @@ test("package preparation rejects a source inside its destination tree", () => {
     () => prepareTraceCCPackageRuntime({ root, source: releaseRoot }),
     /must be outside the package runtime directory/u,
   );
+});
+
+test("package preparation resolves symlinks before clearing its destination", () => {
+  const directory = mkdtempSync(join(tmpdir(), "tracecc-package-source-"));
+  const source = join(directory, "external-release");
+  symlinkSync(releaseRoot, source, "dir");
+  try {
+    assert.throws(
+      () => prepareTraceCCPackageRuntime({ root, source }),
+      /must be outside the package runtime directory/u,
+    );
+    assert.doesNotThrow(() => readFileSync(join(releaseRoot, "tracecc-consumer-lock.json")));
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

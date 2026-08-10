@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -245,7 +246,9 @@ export function prepareTraceCCPackageRuntime(options = {}) {
   }
   const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const packageRoot = join(root, "runtime-release");
-  const sourceFromPackageRoot = relative(packageRoot, source);
+  const resolvedSource = realpathSync(source);
+  const resolvedPackageRoot = realpathSync(packageRoot);
+  const sourceFromPackageRoot = relative(resolvedPackageRoot, resolvedSource);
   if (
     sourceFromPackageRoot === "" ||
     (!isAbsolute(sourceFromPackageRoot) &&
@@ -256,11 +259,11 @@ export function prepareTraceCCPackageRuntime(options = {}) {
       `TraceCC consumer release must be outside the package runtime directory before preparation: ${source}.`,
     );
   }
-  const { consumerHash } = validateTraceCCPackageRuntimeDirectory(source);
+  const { consumerHash } = validateTraceCCPackageRuntimeDirectory(resolvedSource);
   const target = join(packageRoot, consumerHash);
   rmSync(packageRoot, { recursive: true, force: true });
   mkdirSync(dirname(target), { recursive: true });
-  cpSync(source, target, { recursive: true, dereference: false });
+  cpSync(resolvedSource, target, { recursive: true, dereference: false });
 
   const files = listFiles(target).map((file) => {
     const bytes = readFileSync(file.absolute);

@@ -38,6 +38,12 @@
     "dist",
     "runtime-release",
     "legal/LLVM-LICENSE.TXT",
+    "source",
+    "toolchain/manifest.json",
+    "toolchain/Toolchain-WASI-LLVM.cmake",
+    "toolchain/patches/tracecc-v9.patch",
+    "scripts/build-toolchain.sh",
+    "legal/CORRESPONDING_SOURCE.md",
     "LICENSE",
     "README.md",
     "THIRD_PARTY_NOTICES.md"

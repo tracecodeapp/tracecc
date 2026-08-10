@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { gunzipSync } from "node:zlib";
 import { validateTraceCCPackageRuntimeDirectory } from "./prepare-package-runtime.mjs";
 
 const root = join(import.meta.dirname, "..");
@@ -28,6 +29,11 @@ assert.deepEqual(runtime.package, {
   name: packageJson.name,
   version: packageJson.version,
 });
+assert.equal(
+  runtime.releaseId,
+  `tracecc@${packageJson.version}+sha256.${runtime.consumerHash}`,
+  "The package release identifier must be derived from its immutable runtime identity.",
+);
 assert.equal(runtime.targetPath, `cpp/tracecc/${runtime.consumerHash}`);
 assert.ok(runtime.files.length > 0);
 const runtimeRoot = join(root, "runtime-release", runtime.consumerHash);
@@ -68,7 +74,37 @@ for (const file of runtime.files) {
 assert.ok(paths.has("runtime-release/manifest.json"));
 assert.ok(paths.has("LICENSE"));
 assert.ok(paths.has("legal/LLVM-LICENSE.TXT"));
-assert.ok(report.unpackedSize < 160_000_000);
+for (const sourcePath of [
+  "legal/CORRESPONDING_SOURCE.md",
+  "scripts/build-toolchain.sh",
+  "source/README.md",
+  "source/tracecc-use-clang.list",
+  "source/tracecc-v9r1.profdata.gz",
+  "toolchain/Toolchain-WASI-LLVM.cmake",
+  "toolchain/manifest.json",
+  "toolchain/patches/tracecc-v9.patch",
+]) {
+  assert.ok(paths.has(sourcePath), `Packed TraceCC source is missing ${sourcePath}`);
+}
+const sourceManifest = JSON.parse(
+  readFileSync(join(root, "toolchain", "manifest.json"), "utf8"),
+);
+const profile = gunzipSync(
+  readFileSync(join(root, "source", "tracecc-v9r1.profdata.gz")),
+);
+assert.equal(
+  createHash("sha256").update(profile).digest("hex"),
+  sourceManifest.buildInputs.pgo.profileSha256,
+  "The packaged PGO profile must match the frozen build manifest.",
+);
+assert.equal(
+  createHash("sha256")
+    .update(readFileSync(join(root, "source", "tracecc-use-clang.list")))
+    .digest("hex"),
+  sourceManifest.buildInputs.pgo.profileListSha256,
+  "The packaged PGO profile list must match the frozen build manifest.",
+);
+assert.ok(report.unpackedSize < 180_000_000);
 console.log(
   `PASS: ${report.id} packs ${report.files.length} files (${report.size} bytes compressed) with ${runtime.releaseId}.`,
 );
