@@ -25,3 +25,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - run: pnpm verify:package
+
+  release-stack:
+    needs: verify
+    uses: tracecodeapp/harness/.github/workflows/release-stack.yml@codex/java-trace-hotpath-snapshots
+    with:
+      harness-ref: codex/java-trace-hotpath-snapshots
+      tracecc-ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      tracejvm-ref: codex/harness-owned-runtime-assets
