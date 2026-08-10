@@ -40,6 +40,9 @@ const TRACECC_TOOLCHAIN_ARTIFACTS = Object.freeze({
   reactor: "tracecc-reactor.wasm",
   resources: "llvm-resources.tar",
 });
+const TRACECC_TOOLCHAIN_PATCH_PATH = fileURLToPath(
+  new URL("../toolchain/patches/tracecc-v9.patch", import.meta.url),
+);
 
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
@@ -66,6 +69,19 @@ function recomputeConsumerHash(lock) {
   const hash = createHash("sha256").update(lock.toolchain.contentHash);
   for (const file of lock.files) hash.update(file.sha256);
   return hash.digest("hex");
+}
+
+function recomputeToolchainContentHash(lockFiles) {
+  const reactor = lockFiles.get(TRACECC_TOOLCHAIN_ARTIFACTS.reactor);
+  const resources = lockFiles.get(TRACECC_TOOLCHAIN_ARTIFACTS.resources);
+  if (!reactor || !resources) {
+    throw new Error("TraceCC consumer lock is missing base toolchain artifacts.");
+  }
+  return createHash("sha256")
+    .update(reactor.sha256)
+    .update(resources.sha256)
+    .update(sha256(readFileSync(TRACECC_TOOLCHAIN_PATCH_PATH)))
+    .digest("hex");
 }
 
 function validateConsumerLock(lock) {
@@ -120,6 +136,11 @@ function validateConsumerLock(lock) {
         `TraceCC consumer lock toolchain ${role} does not match ${expectedPath}.`,
       );
     }
+  }
+  if (lock.toolchain.contentHash !== recomputeToolchainContentHash(lockFiles)) {
+    throw new Error(
+      "TraceCC consumer lock base toolchain content hash does not match the reactor, resources, and packaged patch.",
+    );
   }
   return lockFiles;
 }

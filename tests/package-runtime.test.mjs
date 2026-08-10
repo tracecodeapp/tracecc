@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   mkdtempSync,
   readFileSync,
@@ -82,6 +83,17 @@ test("consumer lock derives integrity and identity from ordered file digests", (
   assert.throws(
     () => validateTraceCCRuntimeManifest(manifest, mismatchedReactor, releaseRoot),
     /toolchain reactor does not match tracecc-reactor\.wasm/u,
+  );
+
+  const staleToolchainHash = structuredClone(lock);
+  staleToolchainHash.toolchain.contentHash = "0".repeat(64);
+  staleToolchainHash.consumerHash = createHash("sha256")
+    .update(staleToolchainHash.toolchain.contentHash)
+    .update(staleToolchainHash.files.map((file) => file.sha256).join(""))
+    .digest("hex");
+  assert.throws(
+    () => validateTraceCCRuntimeManifest(manifest, staleToolchainHash, releaseRoot),
+    /base toolchain content hash does not match/u,
   );
 });
 
