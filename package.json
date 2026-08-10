@@ -11,7 +11,7 @@
     "wasm",
     "browser"
   ],
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tracecodeapp/tracecc.git"
@@ -36,6 +36,14 @@
   },
   "files": [
     "dist",
+    "runtime-release",
+    "legal/LLVM-LICENSE.TXT",
+    "source",
+    "toolchain/manifest.json",
+    "toolchain/Toolchain-WASI-LLVM.cmake",
+    "toolchain/patches/tracecc-v9.patch",
+    "scripts/build-toolchain.sh",
+    "legal/CORRESPONDING_SOURCE.md",
     "LICENSE",
     "README.md",
     "THIRD_PARTY_NOTICES.md"
@@ -47,8 +55,9 @@
     "test": "pnpm build && node --test tests/*.test.mjs",
     "prepare:release": "node scripts/prepare-toolchain-release.mjs",
     "verify:release": "node scripts/verify-toolchain-release.mjs",
-    "verify:package": "npm pack --dry-run",
-    "prepack": "pnpm build"
+    "prepare:package-runtime": "node scripts/prepare-package-runtime.mjs",
+    "verify:package": "node scripts/verify-package.mjs",
+    "prepack": "pnpm build && pnpm verify:package"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

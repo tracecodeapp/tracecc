@@ -48,17 +48,21 @@ JavaScript object crosses into a learner runner.
 
 ## Release surfaces
 
-TraceCC has two independently versioned surfaces:
+TraceCC has two independently versioned release layers:
 
-- `@tracecode/tracecc`: small TypeScript contracts and validation. It contains
-  no LLVM binary or sysroot.
-- an immutable toolchain release: the reactor Wasm, resources/sysroot archive,
-  release descriptor, legal material, source manifest, and downstream patches.
+- `@tracecode/tracecc`: the TypeScript contracts and validation plus the
+  package-owned, content-addressed `runtime-release/<consumer-hash>/` consumer
+  bundle. The bundle records the exact compiler, sysroot, runtime header, PCH,
+  and runtime-object bytes shipped with that package release.
+- the immutable base toolchain release: the reactor Wasm, resources/sysroot
+  archive, release descriptor, legal material, source manifest, and downstream
+  patches used to assemble a consumer bundle.
 
-TraceCode-specific PCH and runtime-object shards are a harness asset release,
-not part of the generic TraceCC toolchain. Their descriptors pin the exact
-TraceCC toolchain content hash and compile ABI. This means a TraceKernel header
-change may rebuild small consumer artifacts without rebuilding LLVM.
+TraceCode-specific PCH and runtime-object shards remain harness-owned inputs,
+not part of the base generic toolchain. Their descriptors pin the exact
+TraceCC toolchain content hash and compile ABI before they are copied into a
+tracked consumer bundle. A TraceKernel header change may therefore rebuild the
+consumer artifacts without rebuilding LLVM.
 
 Mutable `latest` URLs are forbidden. A release path is
 `tracecc/<toolchain-version>/<content-hash>/`, and every leaf records byte size,
