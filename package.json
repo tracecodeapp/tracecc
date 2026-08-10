@@ -37,6 +37,7 @@
   "files": [
     "dist",
     "runtime-release",
+    "legal/LLVM-LICENSE.TXT",
     "LICENSE",
     "README.md",
     "THIRD_PARTY_NOTICES.md"

@@ -10,9 +10,16 @@ import { validateTraceCCRuntimeManifest } from "./prepare-package-runtime.mjs";
 const root = join(import.meta.dirname, "..");
 const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const license = readFileSync(join(root, "LICENSE"), "utf8");
+const llvmLicense = readFileSync(
+  join(root, "legal", "LLVM-LICENSE.TXT"),
+  "utf8",
+);
 assert.equal(packageJson.license, "AGPL-3.0-only");
-assert.match(license, /GNU Affero General Public License/u);
-assert.match(license, /version 3/u);
+assert.match(license, /GNU AFFERO GENERAL PUBLIC LICENSE/u);
+assert.match(license, /Version 3, 19 November 2007/u);
+assert.match(license, /END OF TERMS AND CONDITIONS/u);
+assert.match(llvmLicense, /Apache License v2\.0 with LLVM Exceptions/u);
+assert.match(llvmLicense, /LLVM Exceptions to the Apache 2\.0 License/u);
 const runtime = JSON.parse(
   readFileSync(join(root, "runtime-release", "manifest.json"), "utf8"),
 );
@@ -58,6 +65,8 @@ for (const file of runtime.files) {
   );
 }
 assert.ok(paths.has("runtime-release/manifest.json"));
+assert.ok(paths.has("LICENSE"));
+assert.ok(paths.has("legal/LLVM-LICENSE.TXT"));
 assert.ok(report.unpackedSize < 160_000_000);
 console.log(
   `PASS: ${report.id} packs ${report.files.length} files (${report.size} bytes compressed) with ${runtime.releaseId}.`,
