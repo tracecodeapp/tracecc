@@ -8,6 +8,10 @@ import { join } from "node:path";
 
 const root = join(import.meta.dirname, "..");
 const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+const license = readFileSync(join(root, "LICENSE"), "utf8");
+assert.equal(packageJson.license, "AGPL-3.0-only");
+assert.match(license, /GNU Affero General Public License/u);
+assert.match(license, /version 3/u);
 const runtime = JSON.parse(
   readFileSync(join(root, "runtime-release", "manifest.json"), "utf8"),
 );
