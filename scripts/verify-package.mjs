@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { validateTraceCCRuntimeManifest } from "./prepare-package-runtime.mjs";
 
 const root = join(import.meta.dirname, "..");
 const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
@@ -22,10 +23,16 @@ assert.deepEqual(runtime.package, {
 });
 assert.equal(runtime.targetPath, `cpp/tracecc/${runtime.consumerHash}`);
 assert.ok(runtime.files.length > 0);
+const runtimeRoot = join(root, "runtime-release", runtime.consumerHash);
+validateTraceCCRuntimeManifest(
+  JSON.parse(readFileSync(join(runtimeRoot, "cpp-runtime-manifest.json"), "utf8")),
+  JSON.parse(readFileSync(join(runtimeRoot, "tracecc-consumer-lock.json"), "utf8")),
+  runtimeRoot,
+);
 
 for (const file of runtime.files) {
   const bytes = readFileSync(
-    join(root, "runtime-release", runtime.consumerHash, ...file.path.split("/")),
+    join(runtimeRoot, ...file.path.split("/")),
   );
   assert.equal(bytes.byteLength, file.size, `${file.path} byte size drifted`);
   assert.equal(
