@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
-import { validateTraceCCRuntimeManifest } from "../scripts/prepare-package-runtime.mjs";
+import {
+  prepareTraceCCPackageRuntime,
+  validateTraceCCRuntimeManifest,
+} from "../scripts/prepare-package-runtime.mjs";
 
 const root = join(import.meta.dirname, "..");
 const packageManifest = JSON.parse(
@@ -38,5 +41,33 @@ test("runtime manifest descriptors exactly match the consumer lock", () => {
   assert.throws(
     () => validateTraceCCRuntimeManifest(missingResource, lock, releaseRoot),
     /compiler resources must contain exactly/u,
+  );
+});
+
+test("consumer lock derives integrity and identity from ordered file digests", () => {
+  const staleIntegrityLock = structuredClone(lock);
+  staleIntegrityLock.files[0].integrity = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+  const staleIntegrityManifest = structuredClone(manifest);
+  staleIntegrityManifest.assets.compilerWasm.integrity = staleIntegrityLock.files[0].integrity;
+  staleIntegrityManifest.assets.linkerWasm.integrity = staleIntegrityLock.files[0].integrity;
+  assert.throws(
+    () => validateTraceCCRuntimeManifest(staleIntegrityManifest, staleIntegrityLock, releaseRoot),
+    /consumer lock entry is invalid/u,
+  );
+
+  const staleConsumerHash = structuredClone(lock);
+  staleConsumerHash.files[0].sha256 = "0".repeat(64);
+  staleConsumerHash.files[0].integrity =
+    "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+  assert.throws(
+    () => validateTraceCCRuntimeManifest(manifest, staleConsumerHash, releaseRoot),
+    /consumer lock identity does not match its ordered runtime files/u,
+  );
+});
+
+test("package preparation rejects a source inside its destination tree", () => {
+  assert.throws(
+    () => prepareTraceCCPackageRuntime({ root, source: releaseRoot }),
+    /must be outside the package runtime directory/u,
   );
 });

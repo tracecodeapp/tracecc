@@ -10,7 +10,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const TRACECC_PACKAGE_RUNTIME_SCHEMA = "tracecc-package-runtime-v1";
@@ -32,9 +32,65 @@ const TRACECC_MANIFEST_RESOURCES = Object.freeze({
   "tracecc-map-pch-source": "map.source.hpp",
   "tracecc-map-runtime-object": "map.o",
 });
+const TRACECC_CONSUMER_HASH_ALGORITHM =
+  "sha256-toolchain-content-hash-plus-ordered-file-sha256-v1";
 
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+function integrityFromSha256(digest) {
+  if (!/^[0-9a-f]{64}$/u.test(digest ?? "")) {
+    throw new Error(
+      `TraceCC consumer lock contains an invalid SHA-256 digest: ${String(digest)}.`,
+    );
+  }
+  return `sha256-${Buffer.from(digest, "hex").toString("base64")}`;
+}
+
+function recomputeConsumerHash(lock) {
+  if (
+    lock?.consumerHashAlgorithm !== TRACECC_CONSUMER_HASH_ALGORITHM ||
+    !/^[0-9a-f]{64}$/u.test(lock?.toolchain?.contentHash ?? "")
+  ) {
+    throw new Error(
+      `TraceCC consumer lock must use ${TRACECC_CONSUMER_HASH_ALGORITHM} with a valid toolchain content hash.`,
+    );
+  }
+  const hash = createHash("sha256").update(lock.toolchain.contentHash);
+  for (const file of lock.files) hash.update(file.sha256);
+  return hash.digest("hex");
+}
+
+function validateConsumerLock(lock) {
+  const declaredFiles = Array.isArray(lock?.files) ? lock.files : [];
+  const lockFiles = new Map();
+  for (const file of declaredFiles) {
+    if (
+      typeof file?.path !== "string" ||
+      file.path.length === 0 ||
+      file.path.startsWith("/") ||
+      file.path.split("/").includes("..") ||
+      !Number.isSafeInteger(file.size) ||
+      file.size < 0 ||
+      typeof file.mediaType !== "string" ||
+      file.mediaType.length === 0 ||
+      file.integrity !== integrityFromSha256(file.sha256) ||
+      lockFiles.has(file.path)
+    ) {
+      throw new Error(`TraceCC consumer lock entry is invalid: ${String(file?.path)}.`);
+    }
+    lockFiles.set(file.path, file);
+  }
+  if (
+    lock?.schema !== "tracecode.tracecc-consumer-lock.v1" ||
+    !/^[0-9a-f]{64}$/u.test(lock?.consumerHash ?? "") ||
+    declaredFiles.length === 0 ||
+    recomputeConsumerHash(lock) !== lock.consumerHash
+  ) {
+    throw new Error("TraceCC consumer lock identity does not match its ordered runtime files.");
+  }
+  return lockFiles;
 }
 
 function listFiles(directory, base = directory) {
@@ -85,12 +141,8 @@ function validateAssetDescriptor(label, descriptor, expectedPath, lockFiles) {
 
 export function validateTraceCCRuntimeManifest(manifest, lock, directory = "runtime release") {
   const consumerHash = lock?.consumerHash;
-  const declaredFiles = Array.isArray(lock?.files) ? lock.files : [];
-  const lockFiles = new Map(declaredFiles.map((file) => [file.path, file]));
+  const lockFiles = validateConsumerLock(lock);
   if (
-    lock?.schema !== "tracecode.tracecc-consumer-lock.v1" ||
-    !/^[0-9a-f]{64}$/u.test(consumerHash ?? "") ||
-    lockFiles.size !== declaredFiles.length ||
     manifest?.protocolVersion !== "browser-runtime-assets-v1" ||
     manifest?.runtime !== "cpp" ||
     manifest?.runtimeVersion !== `tracecc-${consumerHash.slice(0, 12)}` ||
@@ -126,7 +178,7 @@ export function validateTraceCCRuntimeManifest(manifest, lock, directory = "runt
   }
 }
 
-function validateSource(directory) {
+export function validateTraceCCPackageRuntimeDirectory(directory) {
   const manifest = JSON.parse(
     readFileSync(join(directory, "cpp-runtime-manifest.json"), "utf8"),
   );
@@ -141,7 +193,7 @@ function validateSource(directory) {
   }
   validateTraceCCRuntimeManifest(manifest, lock, directory);
 
-  const declared = new Map(lock.files.map((file) => [file.path, file]));
+  const declared = validateConsumerLock(lock);
   for (const file of listFiles(directory)) {
     if (file.path === "cpp-runtime-manifest.json" || file.path === "tracecc-consumer-lock.json") {
       continue;
@@ -179,9 +231,20 @@ export function prepareTraceCCPackageRuntime(options = {}) {
   if (!statSync(source).isDirectory()) {
     throw new Error(`TraceCC consumer release is not a directory: ${source}`);
   }
-  const { consumerHash } = validateSource(source);
   const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const packageRoot = join(root, "runtime-release");
+  const sourceFromPackageRoot = relative(packageRoot, source);
+  if (
+    sourceFromPackageRoot === "" ||
+    (!isAbsolute(sourceFromPackageRoot) &&
+      !sourceFromPackageRoot.startsWith(`..${sep}`) &&
+      sourceFromPackageRoot !== "..")
+  ) {
+    throw new Error(
+      `TraceCC consumer release must be outside the package runtime directory before preparation: ${source}.`,
+    );
+  }
+  const { consumerHash } = validateTraceCCPackageRuntimeDirectory(source);
   const target = join(packageRoot, consumerHash);
   rmSync(packageRoot, { recursive: true, force: true });
   mkdirSync(dirname(target), { recursive: true });

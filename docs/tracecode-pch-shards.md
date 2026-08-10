@@ -89,4 +89,4 @@ reports the new consumer content hash; update `TRACECC_RUNTIME_CONTENT_HASH`
 and the per-file `integrity`/`size` entries in that file (the script verifies
 its generated manifest equals `createTraceCCRuntimeManifest`), rerun, and
 publish the emitted `.cache/tracecc-runtime-assets/<hash>/` directory at
-`/runtime-assets/cpp/tracecc/<hash>/`.
+`/workers/cpp/tracecc/<hash>/`.
