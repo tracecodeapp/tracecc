@@ -69,6 +69,20 @@ test("consumer lock derives integrity and identity from ordered file digests", (
     () => validateTraceCCRuntimeManifest(manifest, staleConsumerHash, releaseRoot),
     /consumer lock identity does not match its ordered runtime files/u,
   );
+
+  const staleToolchainProtocol = structuredClone(lock);
+  staleToolchainProtocol.toolchain.protocolVersion = "tracecc-toolchain-release-v0";
+  assert.throws(
+    () => validateTraceCCRuntimeManifest(manifest, staleToolchainProtocol, releaseRoot),
+    /invalid base toolchain descriptor/u,
+  );
+
+  const mismatchedReactor = structuredClone(lock);
+  mismatchedReactor.toolchain.artifacts.reactor.sha256 = "0".repeat(64);
+  assert.throws(
+    () => validateTraceCCRuntimeManifest(manifest, mismatchedReactor, releaseRoot),
+    /toolchain reactor does not match tracecc-reactor\.wasm/u,
+  );
 });
 
 test("package preparation rejects a source inside its destination tree", () => {

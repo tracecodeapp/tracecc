@@ -35,6 +35,11 @@ const TRACECC_MANIFEST_RESOURCES = Object.freeze({
 });
 const TRACECC_CONSUMER_HASH_ALGORITHM =
   "sha256-toolchain-content-hash-plus-ordered-file-sha256-v1";
+const TRACECC_TOOLCHAIN_RELEASE_PROTOCOL = "tracecc-toolchain-release-v1";
+const TRACECC_TOOLCHAIN_ARTIFACTS = Object.freeze({
+  reactor: "tracecc-reactor.wasm",
+  resources: "llvm-resources.tar",
+});
 
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
@@ -90,6 +95,31 @@ function validateConsumerLock(lock) {
     recomputeConsumerHash(lock) !== lock.consumerHash
   ) {
     throw new Error("TraceCC consumer lock identity does not match its ordered runtime files.");
+  }
+  const toolchainArtifacts = lock?.toolchain?.artifacts;
+  if (
+    lock.toolchain.protocolVersion !== TRACECC_TOOLCHAIN_RELEASE_PROTOCOL ||
+    !toolchainArtifacts ||
+    Object.keys(toolchainArtifacts).length !==
+      Object.keys(TRACECC_TOOLCHAIN_ARTIFACTS).length
+  ) {
+    throw new Error("TraceCC consumer lock contains an invalid base toolchain descriptor.");
+  }
+  for (const [role, expectedPath] of Object.entries(TRACECC_TOOLCHAIN_ARTIFACTS)) {
+    const artifact = toolchainArtifacts[role];
+    const file = lockFiles.get(expectedPath);
+    if (
+      !file ||
+      artifact?.path !== file.path ||
+      artifact?.bytes !== file.size ||
+      artifact?.sha256 !== file.sha256 ||
+      artifact?.integrity !== file.integrity ||
+      artifact?.mediaType !== file.mediaType
+    ) {
+      throw new Error(
+        `TraceCC consumer lock toolchain ${role} does not match ${expectedPath}.`,
+      );
+    }
   }
   return lockFiles;
 }

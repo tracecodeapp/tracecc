@@ -2,10 +2,10 @@
 
 The browser compiler in a TraceCC release is reproducible from:
 
-1. the upstream URL and exact Git revision in `source/manifest.json`
-2. `source/tracecc.patch`
-3. `source/build-toolchain.sh`
-4. `source/Toolchain-WASI-LLVM.cmake`
+1. the upstream URL and exact Git revision in `toolchain/manifest.json`
+2. `toolchain/patches/tracecc-v9.patch`
+3. `scripts/build-toolchain.sh`
+4. `toolchain/Toolchain-WASI-LLVM.cmake`
 5. the WASI SDK, Binaryen, PGO profile, and profile-list versions/digests
    recorded in the manifest
 

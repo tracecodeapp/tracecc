@@ -32,7 +32,8 @@ byte-identical to every release's `llvm-resources.tar`, so copy it in rather
 than duplicating it in git:
 
 ```sh
-cp .cache/releases/<version>/<hash>/llvm-resources.tar toolchain/pch-compiler/
+RUNTIME_DIR=$(node -e 'const m = require("./runtime-release/manifest.json"); process.stdout.write(`runtime-release/${m.consumerHash}`)')
+cp "$RUNTIME_DIR/llvm-resources.tar" toolchain/pch-compiler/
 ```
 
 Build all three shards from the harness header (flags recorded in the
