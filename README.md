@@ -54,8 +54,9 @@ the compiled module. Validate anything derived from user input, and choose
 `objectPath` and `outputPath` yourself inside a root you admit — never a raw
 user filename.
 
-**Start here: [docs/getting-started.md](docs/getting-started.md)** walks through
-a complete request, what validation does and does not cover, and self-hosting.
+**Start here: [Getting started](https://github.com/tracecodeapp/tracecc/blob/main/docs/getting-started.md)**
+walks through a complete request, what validation does and does not cover, and
+self-hosting.
 
 ## Self-hosting the assets
 
@@ -72,8 +73,8 @@ TraceCC compiles code that may be entirely attacker-controlled. It transforms
 bytes safely; it does not defend the code it produces. You own request
 admission, source and time limits, browser isolation headers, Worker retirement,
 and a disposable sandbox for compiled output. `0.1.1` is a pre-release
-integration surface, not a stable API. [SECURITY.md](SECURITY.md) has the threat
-model and private reporting.
+integration surface, not a stable API. The [security policy](https://github.com/tracecodeapp/tracecc/blob/main/SECURITY.md)
+has the threat model and private reporting.
 
 ## Licensing
 
@@ -89,10 +90,10 @@ affiliated with or endorsed by the LLVM Project or YoWASP.
 
 | Document | What it covers |
 | --- | --- |
-| [docs/getting-started.md](docs/getting-started.md) | Requests, integration, and hosting the assets |
-| [docs/architecture.md](docs/architecture.md) | Ownership boundaries, request lifecycle, reactor exports |
-| [docs/consumer-release.md](docs/consumer-release.md) | Rebuilding PCH profiles and assembling a release |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup and building the toolchain from source |
-| [SECURITY.md](SECURITY.md) | Threat model and private reporting |
-| [SUPPORT.md](SUPPORT.md) | Where to ask questions |
-| [CHANGELOG.md](CHANGELOG.md) | Release notes |
+| [Getting started](https://github.com/tracecodeapp/tracecc/blob/main/docs/getting-started.md) | Requests, integration, and hosting the assets |
+| [Architecture](https://github.com/tracecodeapp/tracecc/blob/main/docs/architecture.md) | Ownership boundaries, request lifecycle, reactor exports |
+| [Consumer releases](https://github.com/tracecodeapp/tracecc/blob/main/docs/consumer-release.md) | Rebuilding PCH profiles and assembling a release |
+| [Contributing](https://github.com/tracecodeapp/tracecc/blob/main/CONTRIBUTING.md) | Development setup and building the toolchain from source |
+| [Security](https://github.com/tracecodeapp/tracecc/blob/main/SECURITY.md) | Threat model and private reporting |
+| [Support](https://github.com/tracecodeapp/tracecc/blob/main/SUPPORT.md) | Where to ask questions |
+| [Changelog](https://github.com/tracecodeapp/tracecc/blob/main/CHANGELOG.md) | Release notes |

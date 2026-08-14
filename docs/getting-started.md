@@ -60,6 +60,11 @@ const request: TraceCCCompileRequest = {
 assertTraceCCCompileRequest(request); // throws TypeError on a malformed request
 ```
 
+After validation, create the parent directories and write `request.source` as
+UTF-8 bytes to `request.sourcePath` in the virtual filesystem. The argument
+builder passes the path, not the source string, to Clang. Use fresh scratch
+space so an unwritten path cannot reuse an older request's contents.
+
 Then turn it into the two argument lists the reactor expects — one to compile,
 one to link:
 
