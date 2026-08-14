@@ -1,0 +1,80 @@
+{
+  "name": "@tracecode/tracecc",
+  "version": "0.1.1",
+  "description": "Browser-native C and C++ compiler toolchain for sandboxed embedders",
+  "keywords": [
+    "c",
+    "c++",
+    "clang",
+    "llvm",
+    "webassembly",
+    "wasm",
+    "browser"
+  ],
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tracecodeapp/tracecc.git"
+  },
+  "homepage": "https://github.com/tracecodeapp/tracecc#readme",
+  "bugs": {
+    "url": "https://github.com/tracecodeapp/tracecc/issues"
+  },
+  "type": "module",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./protocol": {
+      "types": "./dist/protocol.d.ts",
+      "import": "./dist/protocol.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "runtime-release",
+    "legal/LLVM-LICENSE.TXT",
+    "source",
+    "toolchain/manifest.json",
+    "toolchain/Toolchain-WASI-LLVM.cmake",
+    "toolchain/patches/tracecc-v9.patch",
+    "runtime/tracecode_runtime.hpp",
+    "scripts/build-toolchain.sh",
+    "scripts/bootstrap-toolchain.mjs",
+    "scripts/prepare-consumer-release.mjs",
+    "scripts/prepare-package-runtime.mjs",
+    "scripts/verify-toolchain-release.mjs",
+    "legal/CORRESPONDING_SOURCE.md",
+    "LICENSE",
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:toolchain": "bash scripts/build-toolchain.sh",
+    "bootstrap:toolchain": "node scripts/bootstrap-toolchain.mjs",
+    "check": "tsc -p tsconfig.json --noEmit && node scripts/check-toolchain-manifest.mjs",
+    "test": "pnpm build && node --test tests/*.test.mjs",
+    "prepare:release": "node scripts/prepare-toolchain-release.mjs",
+    "verify:release": "node scripts/verify-toolchain-release.mjs",
+    "prepare:consumer-release": "node scripts/prepare-consumer-release.mjs",
+    "prepare:package-runtime": "node scripts/prepare-package-runtime.mjs",
+    "verify:package": "node scripts/verify-package.mjs",
+    "prepack": "pnpm build && pnpm verify:package"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.22.0",
+  "publishConfig": {
+    "access": "public"
+  }
+}

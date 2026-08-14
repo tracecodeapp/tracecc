@@ -1,0 +1,158 @@
+{
+  "schemaVersion": "tracecc-source-manifest-v1",
+  "upstream": {
+    "url": "https://github.com/YoWASP/llvm-project",
+    "revision": "97196c8eeb1d495fa43bb8af2fb26af5ef5b89fb"
+  },
+  "target": "wasm32-wasip1",
+  "compilerAbi": "tracecc-fixed-wasm-o0-v1",
+  "buildInputs": {
+    "wasiSdk": "29.0",
+    "binaryen": "131",
+    "distributions": {
+      "wasiSdk": {
+        "release": "wasi-sdk-29",
+        "platforms": {
+          "darwin-arm64": {
+            "archive": "wasi-sdk-29.0-arm64-macos.tar.gz",
+            "url": "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-29/wasi-sdk-29.0-arm64-macos.tar.gz",
+            "sha256": "e11552913e3f99e834d7fe7da1bd081abaf764759ed76b6097a34c63fc83665e"
+          },
+          "darwin-x64": {
+            "archive": "wasi-sdk-29.0-x86_64-macos.tar.gz",
+            "url": "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-29/wasi-sdk-29.0-x86_64-macos.tar.gz",
+            "sha256": "d0de2fd3ea5c57060efa87e4356c164bec3689972f2386f0c9a89c58e10cec8d"
+          },
+          "linux-arm64": {
+            "archive": "wasi-sdk-29.0-arm64-linux.tar.gz",
+            "url": "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-29/wasi-sdk-29.0-arm64-linux.tar.gz",
+            "sha256": "052ad773397dc9e5aa99fb4cfef694175e6b1e81bb2ad1d3c8e7b3fc81441b7c"
+          },
+          "linux-x64": {
+            "archive": "wasi-sdk-29.0-x86_64-linux.tar.gz",
+            "url": "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-29/wasi-sdk-29.0-x86_64-linux.tar.gz",
+            "sha256": "87d1d1a2879d139cdc624b968efad3d4a97b8078cdff95e63ac88ecafd1a0171"
+          }
+        }
+      },
+      "binaryen": {
+        "release": "version_131",
+        "platforms": {
+          "darwin-arm64": {
+            "archive": "binaryen-version_131-arm64-macos.tar.gz",
+            "url": "https://github.com/WebAssembly/binaryen/releases/download/version_131/binaryen-version_131-arm64-macos.tar.gz",
+            "sha256": "e441b48dc22163d209b4f05e44dc7210909b01237642b6c9ae48fd710a3ef83e"
+          },
+          "darwin-x64": {
+            "archive": "binaryen-version_131-x86_64-macos.tar.gz",
+            "url": "https://github.com/WebAssembly/binaryen/releases/download/version_131/binaryen-version_131-x86_64-macos.tar.gz",
+            "sha256": "d209fadd8a894bdaf3bd3612a23c32a0af184d2f4a979b8c789e6e4f6a4de883"
+          },
+          "linux-arm64": {
+            "archive": "binaryen-version_131-aarch64-linux.tar.gz",
+            "url": "https://github.com/WebAssembly/binaryen/releases/download/version_131/binaryen-version_131-aarch64-linux.tar.gz",
+            "sha256": "ba991f677edd9a21d2bc96c0144bc8ac5b112d4d98a3eb266e075e22e557df2a"
+          },
+          "linux-x64": {
+            "archive": "binaryen-version_131-x86_64-linux.tar.gz",
+            "url": "https://github.com/WebAssembly/binaryen/releases/download/version_131/binaryen-version_131-x86_64-linux.tar.gz",
+            "sha256": "b5bf1f0eaf17c63ee588ff7a5954dc8f6ce2c26989051c66f24dfe9ece3e46db"
+          }
+        }
+      }
+    },
+    "runtimeResources": {
+      "bytes": 29112320,
+      "sha256": "d95d2a2bc8408a16c0744996ac47c91bb3c63bb71b94315c9796089b6dda8555",
+      "note": "This exact sysroot/resource image is part of the compiler ABI because release PCH files record header identities."
+    },
+    "pchCompiler": {
+      "version": "22.0.0-release-noassert-wasm32-frontend.0",
+      "wasmSha256": "c0a51aa19e7809e84303fac072318893dfd7beeffd2d60450f1f2b035f75143d",
+      "resourcesSha256": "d95d2a2bc8408a16c0744996ac47c91bb3c63bb71b94315c9796089b6dda8555",
+      "bundleHashAlgorithm": "sha256-ordered-path-and-file-sha256-v1",
+      "bundleSha256": "d7ee1ac5c6f567b46f82cd0bce749e6b677aa5d3603c679c520bef6e1eaa01da",
+      "files": [
+        {
+          "path": "bundle.js",
+          "bytes": 240068,
+          "sha256": "5780069ed6e6555f12bbcbec16426e56f2b334e8cf6a5f24a29eb235084e513f"
+        },
+        {
+          "path": "llvm-resources.js",
+          "bytes": 1653,
+          "sha256": "4fe0578d1ccfb8cbf71445eae2f5acbb582307bb6d81d7399c8605a847627968"
+        },
+        {
+          "path": "llvm-resources.tar",
+          "bytes": 29112320,
+          "sha256": "d95d2a2bc8408a16c0744996ac47c91bb3c63bb71b94315c9796089b6dda8555"
+        },
+        {
+          "path": "llvm.core.wasm",
+          "bytes": 85904947,
+          "sha256": "c0a51aa19e7809e84303fac072318893dfd7beeffd2d60450f1f2b035f75143d"
+        },
+        {
+          "path": "llvm.core2.wasm",
+          "bytes": 36163,
+          "sha256": "1386684633921239e3f651cc3c10ac134963f6345264f148d225dfe990a8ed03"
+        },
+        {
+          "path": "llvm.core3.wasm",
+          "bytes": 5080,
+          "sha256": "ada3ac1ee4d16accff2a0eb3d8d58cbb2a530bda9a9d725a398874b679097c2d"
+        },
+        {
+          "path": "llvm.core4.wasm",
+          "bytes": 718,
+          "sha256": "1b511cca081637bf878603cba598475e8990b2d39280149a031d829e8bc9805f"
+        },
+        {
+          "path": "llvm.js",
+          "bytes": 202743,
+          "sha256": "cbe3d9db01bfb838c1973248e2b5cb3e4541a89e627fd26b05869f537a00a2a0"
+        }
+      ],
+      "note": "PCH provenance sidecars must bind every shard to this compiler and the matching runtime resources."
+    },
+    "pgo": {
+      "profileSha256": "7e79a147f7fc7f100b028bdffd6c57dfaf646906e4353f653558a453f88b8b28",
+      "profileListSha256": "141a544be5a09279d87438e47f1b4ad2968223a924704fcdee433d6dfa297e56",
+      "note": "The pooled training campaign was performance-neutral overall. The deterministic v9r2 candidate retains the exact v9r1 profile-use input; remove it only as a separately benchmarked change."
+    }
+  },
+  "cmake": {
+    "buildType": "MinSizeRel",
+    "assertions": false,
+    "projects": [
+      "clang",
+      "lld"
+    ],
+    "targets": [
+      "WebAssembly"
+    ],
+    "traceccOptions": {
+      "LLD_WASM_TRACECC_NO_BITCODE": true,
+      "CLANG_TRACECC_LEAN_BACKEND": true,
+      "LLVM_TRACECC_LEAN_WASM_O0": true
+    }
+  },
+  "postLink": {
+    "tool": "Binaryen wasm-opt version 131",
+    "arguments": [
+      "--all-features",
+      "--duplicate-function-elimination",
+      "--remove-unused-module-elements",
+      "-g"
+    ]
+  },
+  "candidate": {
+    "name": "v9r2",
+    "rawBytes": 37514888,
+    "rawSha256": "7730d961fda40442300bb40fe022087954e8bd2b22bb14ead7e31fe3bc8d6d99",
+    "foldedBytes": 33472827,
+    "foldedSha256": "0a043fc2f220328603e6b3a19a75f378b327779c92d4a9f1a495cf6b5de57a02",
+    "brotliBytes": 8696029
+  }
+}

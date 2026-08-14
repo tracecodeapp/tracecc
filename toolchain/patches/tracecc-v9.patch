@@ -1,0 +1,3036 @@
+diff --git a/clang/lib/Basic/Targets.cpp b/clang/lib/Basic/Targets.cpp
+index 263253918..cfd201bc5 100644
+--- a/clang/lib/Basic/Targets.cpp
++++ b/clang/lib/Basic/Targets.cpp
+@@ -110,6 +110,26 @@ void addCygMingDefines(const LangOptions &Opts, MacroBuilder &Builder) {
+ 
+ std::unique_ptr<TargetInfo> AllocateTarget(const llvm::Triple &Triple,
+                                            const TargetOptions &Opts) {
++  // TraceCC is the wasm32-wasip1 compiler authority used by TraceKernel. It
++  // does not expose clang's target-selection surface, so constructing every
++  // native/GPU/foreign-Wasm TargetInfo only retains unreachable code and data
++  // in the browser module.
++  if (Triple.getArch() != llvm::Triple::wasm32 ||
++      Triple.getSubArch() != llvm::Triple::NoSubArch ||
++      Triple.getVendor() != llvm::Triple::UnknownVendor ||
++      !Triple.isOSBinFormatWasm())
++    return nullptr;
++
++  switch (Triple.getOS()) {
++  case llvm::Triple::WASI:
++  case llvm::Triple::WASIp1:
++    return std::make_unique<WASIP1TargetInfo<WebAssembly32TargetInfo>>(Triple,
++                                                                       Opts);
++  default:
++    return nullptr;
++  }
++
++#if 0
+   llvm::Triple::OSType os = Triple.getOS();
+ 
+   switch (Triple.getArch()) {
+@@ -796,6 +816,7 @@ std::unique_ptr<TargetInfo> AllocateTarget(const llvm::Triple &Triple,
+   case llvm::Triple::xtensa:
+     return std::make_unique<XtensaTargetInfo>(Triple, Opts);
+   }
++#endif
+ }
+ } // namespace targets
+ } // namespace clang
+diff --git a/clang/lib/CodeGen/CGBuiltin.cpp b/clang/lib/CodeGen/CGBuiltin.cpp
+index dd8ba79ed..8589c8bed 100644
+--- a/clang/lib/CodeGen/CGBuiltin.cpp
++++ b/clang/lib/CodeGen/CGBuiltin.cpp
+@@ -73,6 +73,19 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
+                                         unsigned BuiltinID, const CallExpr *E,
+                                         ReturnValueSlot ReturnValue,
+                                         llvm::Triple::ArchType Arch) {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  // TraceCC is a TraceKernel compiler authority, not a multi-target clang
++  // driver. Its target is fixed to WebAssembly, so retaining references to
++  // every native/GPU builtin emitter makes those implementations live in the
++  // browser module without providing a reachable capability.
++  switch (Arch) {
++  case llvm::Triple::wasm32:
++  case llvm::Triple::wasm64:
++    return CGF->EmitWebAssemblyBuiltinExpr(BuiltinID, E);
++  default:
++    return nullptr;
++  }
++#else
+   // When compiling in HipStdPar mode we have to be conservative in rejecting
+   // target specific features in the FE, and defer the possible error to the
+   // AcceleratorCodeSelection pass, wherein iff an unsupported target builtin is
+@@ -132,6 +145,7 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
+   default:
+     return nullptr;
+   }
++#endif
+ }
+ 
+ Value *CodeGenFunction::EmitTargetBuiltinExpr(unsigned BuiltinID,
+@@ -6528,6 +6542,7 @@ RValue CodeGenFunction::EmitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
+     llvm_unreachable("Bad evaluation kind in EmitBuiltinExpr");
+   }
+ 
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   // EmitHLSLBuiltinExpr will check getLangOpts().HLSL
+   if (Value *V = EmitHLSLBuiltinExpr(BuiltinID, E, ReturnValue)) {
+     switch (EvalKind) {
+@@ -6543,6 +6558,7 @@ RValue CodeGenFunction::EmitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
+     }
+     llvm_unreachable("Bad evaluation kind in EmitBuiltinExpr");
+   }
++#endif
+ 
+   if (getLangOpts().HIPStdPar && getLangOpts().CUDAIsDevice)
+     return EmitHipStdParUnsupportedBuiltin(this, FD);
+diff --git a/clang/lib/CodeGen/CGCall.cpp b/clang/lib/CodeGen/CGCall.cpp
+index d7bdeb398..7fd826e15 100644
+--- a/clang/lib/CodeGen/CGCall.cpp
++++ b/clang/lib/CodeGen/CGCall.cpp
+@@ -821,7 +821,9 @@ const CGFunctionInfo &CodeGenTypes::arrangeCall(const CGFunctionInfo &signature,
+ 
+ namespace clang {
+ namespace CodeGen {
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+ void computeSPIRKernelABIInfo(CodeGenModule &CGM, CGFunctionInfo &FI);
++#endif
+ }
+ } // namespace clang
+ 
+@@ -864,6 +866,15 @@ const CGFunctionInfo &CodeGenTypes::arrangeLLVMFunctionInfo(
+   assert(inserted && "Recursively being processed?");
+ 
+   // Compute ABI information.
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  assert(CC != llvm::CallingConv::SPIR_KERNEL &&
++         "SPIR kernels are unavailable in TraceCC");
++  if (info.getCC() == CC_Swift || info.getCC() == CC_SwiftAsync) {
++    swiftcall::computeABIInfo(CGM, *FI);
++  } else {
++    CGM.getABIInfo().computeInfo(*FI);
++  }
++#else
+   if (CC == llvm::CallingConv::SPIR_KERNEL) {
+     // Force target independent argument handling for the host visible
+     // kernel functions.
+@@ -873,6 +884,7 @@ const CGFunctionInfo &CodeGenTypes::arrangeLLVMFunctionInfo(
+   } else {
+     CGM.getABIInfo().computeInfo(*FI);
+   }
++#endif
+ 
+   // Loop over all of the computed argument and return value info.  If any of
+   // them are direct or extend without a specified coerce type, specify the
+diff --git a/clang/lib/CodeGen/CGDecl.cpp b/clang/lib/CodeGen/CGDecl.cpp
+index 8b1cd83af..7a9ca2829 100644
+--- a/clang/lib/CodeGen/CGDecl.cpp
++++ b/clang/lib/CodeGen/CGDecl.cpp
+@@ -337,8 +337,10 @@ llvm::Constant *CodeGenModule::getOrCreateStaticVarDecl(
+     assert(isa<ObjCMethodDecl>(DC) && "unexpected parent code decl");
+   }
+   if (GD.getDecl()) {
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+     // Disable emission of the parent function for the OpenMP device codegen.
+     CGOpenMPRuntime::DisableAutoDeclareTargetRAII NoDeclTarget(*this);
++#endif
+     (void)GetAddrOfGlobal(GD);
+   }
+ 
+@@ -1502,6 +1504,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
+   Address address = Address::invalid();
+   RawAddress AllocaAddr = RawAddress::invalid();
+   Address OpenMPLocalAddr = Address::invalid();
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   if (CGM.getLangOpts().OpenMPIRBuilder)
+     OpenMPLocalAddr = OMPBuilderCBHelpers::getAddressOfLocalVariable(*this, &D);
+   else
+@@ -1509,6 +1512,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
+         getLangOpts().OpenMP
+             ? CGM.getOpenMPRuntime().getAddressOfLocalVariable(*this, &D)
+             : Address::invalid();
++#endif
+ 
+   bool NRVO = getLangOpts().ElideConstructors && D.isNRVOVariable();
+ 
+@@ -2863,17 +2867,29 @@ void CodeGenFunction::EmitParmDecl(const VarDecl &D, ParamValue Arg,
+ 
+ void CodeGenModule::EmitOMPDeclareReduction(const OMPDeclareReductionDecl *D,
+                                             CodeGenFunction *CGF) {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  (void)D;
++  (void)CGF;
++  return;
++#else
+   if (!LangOpts.OpenMP || (!LangOpts.EmitAllDecls && !D->isUsed()))
+     return;
+   getOpenMPRuntime().emitUserDefinedReduction(CGF, D);
++#endif
+ }
+ 
+ void CodeGenModule::EmitOMPDeclareMapper(const OMPDeclareMapperDecl *D,
+                                          CodeGenFunction *CGF) {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  (void)D;
++  (void)CGF;
++  return;
++#else
+   if (!LangOpts.OpenMP || LangOpts.OpenMPSimd ||
+       (!LangOpts.EmitAllDecls && !D->isUsed()))
+     return;
+   getOpenMPRuntime().emitUserDefinedMapper(D, CGF);
++#endif
+ }
+ 
+ void CodeGenModule::EmitOpenACCDeclare(const OpenACCDeclareDecl *D,
+diff --git a/clang/lib/CodeGen/CGExpr.cpp b/clang/lib/CodeGen/CGExpr.cpp
+index 24878710d..5a957d5d8 100644
+--- a/clang/lib/CodeGen/CGExpr.cpp
++++ b/clang/lib/CodeGen/CGExpr.cpp
+@@ -3169,6 +3169,9 @@ static void setObjCGCLValueClass(const ASTContext &Ctx, const Expr *E,
+ static LValue EmitThreadPrivateVarDeclLValue(
+     CodeGenFunction &CGF, const VarDecl *VD, QualType T, Address Addr,
+     llvm::Type *RealVarTy, SourceLocation Loc) {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  llvm_unreachable("OpenMP thread-private variables are unavailable in TraceCC");
++#else
+   if (CGF.CGM.getLangOpts().OpenMPIRBuilder)
+     Addr = CodeGenFunction::OMPBuilderCBHelpers::getAddrOfThreadPrivate(
+         CGF, VD, Addr, Loc);
+@@ -3178,10 +3181,14 @@ static LValue EmitThreadPrivateVarDeclLValue(
+ 
+   Addr = Addr.withElementType(RealVarTy);
+   return CGF.MakeAddrLValue(Addr, T, AlignmentSource::Decl);
++#endif
+ }
+ 
+ static Address emitDeclTargetVarDeclLValue(CodeGenFunction &CGF,
+                                            const VarDecl *VD, QualType T) {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  llvm_unreachable("OpenMP declare-target variables are unavailable in TraceCC");
++#else
+   std::optional<OMPDeclareTargetDeclAttr::MapTypeTy> Res =
+       OMPDeclareTargetDeclAttr::isDeclareTargetDeclaration(VD);
+   // Return an invalid address if variable is MT_To (or MT_Enter starting with
+@@ -3199,6 +3206,7 @@ static Address emitDeclTargetVarDeclLValue(CodeGenFunction &CGF,
+   QualType PtrTy = CGF.getContext().getPointerType(VD->getType());
+   Address Addr = CGF.CGM.getOpenMPRuntime().getAddrOfDeclareTargetVar(VD);
+   return CGF.EmitLoadOfPointer(Addr, PtrTy->castAs<PointerType>());
++#endif
+ }
+ 
+ Address
+@@ -3474,9 +3482,11 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
+             CapLVal = MakeAddrLValue(I->second, T);
+           // Mark lvalue as nontemporal if the variable is marked as nontemporal
+           // in simd context.
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+           if (getLangOpts().OpenMP &&
+               CGM.getOpenMPRuntime().isNontemporalDecl(VD))
+             CapLVal.setNontemporal(/*Value=*/true);
++#endif
+           return CapLVal;
+         }
+         LValue CapLVal =
+@@ -3491,9 +3501,11 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
+                                  CapLVal.getTBAAInfo());
+         // Mark lvalue as nontemporal if the variable is marked as nontemporal
+         // in simd context.
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+         if (getLangOpts().OpenMP &&
+             CGM.getOpenMPRuntime().isNontemporalDecl(VD))
+           CapLVal.setNontemporal(/*Value=*/true);
++#endif
+         return CapLVal;
+       }
+ 
+@@ -4811,6 +4823,7 @@ LValue CodeGenFunction::EmitArraySubscriptExpr(const ArraySubscriptExpr *E,
+ 
+   // The HLSL runtime handles subscript expressions on global resource arrays
+   // and objects with HLSL buffer layouts.
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   if (getLangOpts().HLSL) {
+     std::optional<LValue> LV;
+     if (E->getType()->isHLSLResourceRecord() ||
+@@ -4823,6 +4836,7 @@ LValue CodeGenFunction::EmitArraySubscriptExpr(const ArraySubscriptExpr *E,
+     if (LV.has_value())
+       return *LV;
+   }
++#endif
+ 
+   // All the other cases basically behave like simple offsetting.
+ 
+@@ -5329,11 +5343,13 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
+     EmitIgnoredExpr(E->getBase());
+     return EmitDeclRefLValue(DRE);
+   }
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   if (getLangOpts().HLSL &&
+       E->getType().getAddressSpace() == LangAS::hlsl_constant) {
+     // We have an HLSL buffer - emit using HLSL's layout rules.
+     return CGM.getHLSLRuntime().emitBufferMemberExpr(*this, E);
+   }
++#endif
+ 
+   Expr *BaseExpr = E->getBase();
+   // Check whether the underlying base pointer is a constant null.
+@@ -5364,6 +5380,7 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
+   if (auto *Field = dyn_cast<FieldDecl>(ND)) {
+     LValue LV = EmitLValueForField(BaseLV, Field, IsInBounds);
+     setObjCGCLValueClass(getContext(), E, LV);
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+     if (getLangOpts().OpenMP) {
+       // If the member was explicitly marked as nontemporal, mark it as
+       // nontemporal. If the base lvalue is marked as nontemporal, mark access
+@@ -5373,6 +5390,7 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
+           BaseLV.isNontemporal())
+         LV.setNontemporal(/*Value=*/true);
+     }
++#endif
+     return LV;
+   }
+ 
+@@ -6518,9 +6536,11 @@ LValue CodeGenFunction::EmitHLSLArrayAssignLValue(const BinaryOperator *E) {
+ 
+   // If the RHS is a global resource array, copy all individual resources
+   // into LHS.
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   if (E->getRHS()->getType()->isHLSLResourceRecordArray())
+     if (CGM.getHLSLRuntime().emitResourceArrayCopy(LHS, E->getRHS(), *this))
+       return LHS;
++#endif
+ 
+   // In C the RHS of an assignment operator is an RValue.
+   // EmitAggregateAssign takes an LValue for the RHS. Instead we can call
+diff --git a/clang/lib/CodeGen/CGExprAgg.cpp b/clang/lib/CodeGen/CGExprAgg.cpp
+index 7cc4d6c8f..6999d17b8 100644
+--- a/clang/lib/CodeGen/CGExprAgg.cpp
++++ b/clang/lib/CodeGen/CGExprAgg.cpp
+@@ -39,7 +39,11 @@ using namespace CodeGen;
+ //===----------------------------------------------------------------------===//
+ 
+ namespace llvm {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++inline constexpr bool EnableSingleByteCoverage = false;
++#else
+ extern cl::opt<bool> EnableSingleByteCoverage;
++#endif
+ } // namespace llvm
+ 
+ namespace {
+@@ -1738,9 +1742,11 @@ void AggExprEmitter::VisitCXXParenListOrInitListExpr(
+   // deprecate in the near future. See related HLSL language proposals:
+   // * 0005-strict-initializer-lists.md
+   // * https://github.com/microsoft/hlsl-specs/pull/325
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   if (CGF.getLangOpts().HLSL && isa<InitListExpr>(ExprToVisit))
+     CGF.CGM.getHLSLRuntime().emitInitListOpaqueValues(
+         CGF, cast<InitListExpr>(ExprToVisit));
++#endif
+ 
+   AggValueSlot Dest = EnsureSlot(ExprToVisit->getType());
+ 
+@@ -2279,9 +2285,11 @@ void CodeGenFunction::EmitAggregateCopy(LValue Dest, LValue Src, QualType Ty,
+     }
+   }
+ 
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   if (getLangOpts().HLSL && Ty.getAddressSpace() == LangAS::hlsl_constant)
+     if (CGM.getHLSLRuntime().emitBufferCopy(*this, DestPtr, SrcPtr, Ty))
+       return;
++#endif
+ 
+   // Aggregate assignment turns into llvm.memcpy.  This is almost valid per
+   // C99 6.5.16.1p3, which states "If the value being stored in an object is
+diff --git a/clang/lib/CodeGen/CGExprComplex.cpp b/clang/lib/CodeGen/CGExprComplex.cpp
+index e5815ef11..146222aed 100644
+--- a/clang/lib/CodeGen/CGExprComplex.cpp
++++ b/clang/lib/CodeGen/CGExprComplex.cpp
+@@ -28,7 +28,11 @@ using namespace CodeGen;
+ //===----------------------------------------------------------------------===//
+ 
+ namespace llvm {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++inline constexpr bool EnableSingleByteCoverage = false;
++#else
+ extern cl::opt<bool> EnableSingleByteCoverage;
++#endif
+ } // namespace llvm
+ 
+ typedef CodeGenFunction::ComplexPairTy ComplexPairTy;
+diff --git a/clang/lib/CodeGen/CGExprScalar.cpp b/clang/lib/CodeGen/CGExprScalar.cpp
+index 6fd94752f..3cd5c89e5 100644
+--- a/clang/lib/CodeGen/CGExprScalar.cpp
++++ b/clang/lib/CodeGen/CGExprScalar.cpp
+@@ -61,7 +61,11 @@ using llvm::Value;
+ //===----------------------------------------------------------------------===//
+ 
+ namespace llvm {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++inline constexpr bool EnableSingleByteCoverage = false;
++#else
+ extern cl::opt<bool> EnableSingleByteCoverage;
++#endif
+ } // namespace llvm
+ 
+ namespace {
+@@ -2207,8 +2211,10 @@ Value *ScalarExprEmitter::VisitInitListExpr(InitListExpr *E) {
+   // proposals (https://github.com/microsoft/hlsl-specs/blob/main/proposals):
+   // * 0005-strict-initializer-lists.md
+   // * 0032-constructors.md
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   if (CGF.getLangOpts().HLSL)
+     CGF.CGM.getHLSLRuntime().emitInitListOpaqueValues(CGF, E);
++#endif
+ 
+   if (E->hadArrayRangeDesignator())
+     CGF.ErrorUnsupported(E, "GNU array range designator extension");
+diff --git a/clang/lib/CodeGen/CGOpenMPRuntime.cpp b/clang/lib/CodeGen/CGOpenMPRuntime.cpp
+index 01661ad54..36957999b 100644
+--- a/clang/lib/CodeGen/CGOpenMPRuntime.cpp
++++ b/clang/lib/CodeGen/CGOpenMPRuntime.cpp
+@@ -6310,6 +6310,7 @@ void CGOpenMPRuntime::computeMinAndMaxThreadsAndTeams(
+   getNumThreadsExprForTargetDirective(CGF, D, MaxThreadsVal,
+                                       /*UpperBoundOnly=*/true);
+ 
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   for (auto *C : D.getClausesOfKind<OMPXAttributeClause>()) {
+     for (auto *A : C->getAttrs()) {
+       int32_t AttrMinThreadsVal = 1, AttrMaxThreadsVal = -1;
+@@ -6335,6 +6336,7 @@ void CGOpenMPRuntime::computeMinAndMaxThreadsAndTeams(
+                                       : AttrMaxBlocksVal;
+     }
+   }
++#endif
+ }
+ 
+ void CGOpenMPRuntime::emitTargetOutlinedFunctionHelper(
+@@ -6364,12 +6366,14 @@ void CGOpenMPRuntime::emitTargetOutlinedFunctionHelper(
+ 
+   CGM.getTargetCodeGenInfo().setTargetAttributes(nullptr, OutlinedFn, CGM);
+ 
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   for (auto *C : D.getClausesOfKind<OMPXAttributeClause>()) {
+     for (auto *A : C->getAttrs()) {
+       if (auto *Attr = dyn_cast<AMDGPUWavesPerEUAttr>(A))
+         CGM.handleAMDGPUWavesPerEUAttr(OutlinedFn, Attr);
+     }
+   }
++#endif
+   registerVTable(D);
+ }
+ 
+diff --git a/clang/lib/CodeGen/CGStmt.cpp b/clang/lib/CodeGen/CGStmt.cpp
+index c050fd41a..8ce49522e 100644
+--- a/clang/lib/CodeGen/CGStmt.cpp
++++ b/clang/lib/CodeGen/CGStmt.cpp
+@@ -45,7 +45,11 @@ using namespace CodeGen;
+ //===----------------------------------------------------------------------===//
+ 
+ namespace llvm {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++inline constexpr bool EnableSingleByteCoverage = false;
++#else
+ extern cl::opt<bool> EnableSingleByteCoverage;
++#endif
+ } // namespace llvm
+ 
+ void CodeGenFunction::EmitStopPoint(const Stmt *S) {
+@@ -90,12 +94,14 @@ void CodeGenFunction::EmitStmt(const Stmt *S, ArrayRef<const Attr *> Attrs) {
+ 
+   // Ignore all OpenMP directives except for simd if OpenMP with Simd is
+   // enabled.
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   if (getLangOpts().OpenMP && getLangOpts().OpenMPSimd) {
+     if (const auto *D = dyn_cast<OMPExecutableDirective>(S)) {
+       EmitSimpleOMPExecutableDirective(*D);
+       return;
+     }
+   }
++#endif
+ 
+   switch (S->getStmtClass()) {
+   case Stmt::NoStmtClass:
+@@ -208,6 +214,10 @@ void CodeGenFunction::EmitStmt(const Stmt *S, ArrayRef<const Attr *> Attrs) {
+   case Stmt::SEHTryStmtClass:
+     EmitSEHTryStmt(cast<SEHTryStmt>(*S));
+     break;
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  default:
++    llvm_unreachable("OpenMP statements are unavailable in TraceCC");
++#else
+   case Stmt::OMPMetaDirectiveClass:
+     EmitOMPMetaDirective(cast<OMPMetaDirective>(*S));
+     break;
+@@ -461,6 +471,7 @@ void CodeGenFunction::EmitStmt(const Stmt *S, ArrayRef<const Attr *> Attrs) {
+   case Stmt::OMPAssumeDirectiveClass:
+     EmitOMPAssumeDirective(cast<OMPAssumeDirective>(*S));
+     break;
++#endif
+   case Stmt::OpenACCComputeConstructClass:
+     EmitOpenACCComputeConstruct(cast<OpenACCComputeConstruct>(*S));
+     break;
+diff --git a/clang/lib/CodeGen/CMakeLists.txt b/clang/lib/CodeGen/CMakeLists.txt
+index dbbc35b37..90b0a2461 100644
+--- a/clang/lib/CodeGen/CMakeLists.txt
++++ b/clang/lib/CodeGen/CMakeLists.txt
+@@ -1,3 +1,27 @@
++option(CLANG_TRACECC_LEAN_BACKEND
++  "Use the restricted TraceCC wasm32-wasip1 O0 object backend" OFF)
++
++# TraceCC owns the compiler invocation and only asks its compiler worker for
++# wasm32-wasip1 object files at -O0.  Keep this replacement local to the
++# experimental build option: normal Clang builds retain BackendUtil.cpp and
++# its complete feature surface.
++set(CLANG_CODEGEN_BACKEND_UTIL BackendUtil.cpp)
++set(CLANG_CODEGEN_COVERAGE_MAPPING CoverageMappingGen.cpp)
++set(CLANG_CODEGEN_OPENMP_SOURCES
++  CGOpenMPRuntime.cpp
++  CGOpenMPRuntimeGPU.cpp
++  CGStmtOpenMP.cpp)
++set(CLANG_CODEGEN_HLSL_SOURCES
++  CGHLSLBuiltins.cpp
++  CGHLSLRuntime.cpp
++  HLSLBufferLayoutBuilder.cpp)
++if (CLANG_TRACECC_LEAN_BACKEND)
++  set(CLANG_CODEGEN_BACKEND_UTIL TraceCCBackendUtil.cpp)
++  set(CLANG_CODEGEN_COVERAGE_MAPPING)
++  set(CLANG_CODEGEN_OPENMP_SOURCES)
++  set(CLANG_CODEGEN_HLSL_SOURCES)
++endif()
++
+ set(LLVM_LINK_COMPONENTS
+   AggressiveInstCombine
+   Analysis
+@@ -6,11 +30,9 @@ set(LLVM_LINK_COMPONENTS
+   CodeGenTypes
+   Core
+   Coroutines
+-  Coverage
+   Demangle
+   Extensions
+   FrontendDriver
+-  FrontendHLSL
+   FrontendOpenMP
+   FrontendOffloading
+   HIPStdPar
+@@ -34,6 +56,10 @@ set(LLVM_LINK_COMPONENTS
+   TransformUtils
+   )
+ 
++if (NOT CLANG_TRACECC_LEAN_BACKEND)
++  list(APPEND LLVM_LINK_COMPONENTS Coverage FrontendHLSL)
++endif()
++
+ # Workaround for MSVC ARM64 performance regression:
+ # https://developercommunity.visualstudio.com/t/Compiling-a-specific-code-for-ARM64-with/10444970
+ # Since /O1 and /O2 represent a set of optimizations,
+@@ -58,7 +84,7 @@ endif()
+ add_clang_library(clangCodeGen
+   ABIInfo.cpp
+   ABIInfoImpl.cpp
+-  BackendUtil.cpp
++  ${CLANG_CODEGEN_BACKEND_UTIL}
+   CGAtomic.cpp
+   CGBlocks.cpp
+   CGBuiltin.cpp
+@@ -81,8 +107,7 @@ add_clang_library(clangCodeGen
+   CGExprConstant.cpp
+   CGExprScalar.cpp
+   CGGPUBuiltin.cpp
+-  CGHLSLRuntime.cpp
+-  CGHLSLBuiltins.cpp
++  ${CLANG_CODEGEN_HLSL_SOURCES}
+   CGLoopInfo.cpp
+   CGNonTrivialStruct.cpp
+   CGObjC.cpp
+@@ -90,12 +115,10 @@ add_clang_library(clangCodeGen
+   CGObjCMac.cpp
+   CGObjCRuntime.cpp
+   CGOpenCLRuntime.cpp
+-  CGOpenMPRuntime.cpp
+-  CGOpenMPRuntimeGPU.cpp
++  ${CLANG_CODEGEN_OPENMP_SOURCES}
+   CGPointerAuth.cpp
+   CGRecordLayoutBuilder.cpp
+   CGStmt.cpp
+-  CGStmtOpenMP.cpp
+   CGVTT.cpp
+   CGVTables.cpp
+   CodeGenABITypes.cpp
+@@ -107,9 +130,8 @@ add_clang_library(clangCodeGen
+   CodeGenTBAA.cpp
+   CodeGenTypes.cpp
+   ConstantInitBuilder.cpp
+-  CoverageMappingGen.cpp
++  ${CLANG_CODEGEN_COVERAGE_MAPPING}
+   ItaniumCXXABI.cpp
+-  HLSLBufferLayoutBuilder.cpp
+   LinkInModulesPass.cpp
+   MacroPPCallbacks.cpp
+   MicrosoftCXXABI.cpp
+@@ -158,6 +180,10 @@ add_clang_library(clangCodeGen
+   TrapReasonBuilder.cpp
+   VarBypassDetector.cpp
+ 
++  # The opt-in TraceCC backend replaces BackendUtil.cpp, so one of those two
++  # source files is intentionally absent from each configured target.
++  PARTIAL_SOURCES_INTENDED
++
+   DEPENDS
+   vt_gen
+   intrinsics_gen
+@@ -173,3 +199,22 @@ add_clang_library(clangCodeGen
+   clangLex
+   clangSerialization
+   )
++
++if (CLANG_TRACECC_LEAN_BACKEND)
++  set_source_files_properties(
++    CGBuiltin.cpp
++    CGCall.cpp
++    CGDecl.cpp
++    CGExpr.cpp
++    CGExprAgg.cpp
++    CGExprComplex.cpp
++    CGExprScalar.cpp
++    CGStmt.cpp
++    CodeGenAction.cpp
++    CodeGenFunction.cpp
++    CodeGenModule.cpp
++    CodeGenPGO.cpp
++    CodeGenTypes.cpp
++    PROPERTIES
++    COMPILE_DEFINITIONS CLANG_TRACECC_LEAN_SOURCE_ONLY=1)
++endif()
+diff --git a/clang/lib/CodeGen/CodeGenAction.cpp b/clang/lib/CodeGen/CodeGenAction.cpp
+index a5ef4ac9d..f10aad407 100644
+--- a/clang/lib/CodeGen/CodeGenAction.cpp
++++ b/clang/lib/CodeGen/CodeGenAction.cpp
+@@ -30,7 +30,9 @@
+ #include "clang/Serialization/ASTWriter.h"
+ #include "llvm/ADT/Hashing.h"
+ #include "llvm/ADT/ScopeExit.h"
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+ #include "llvm/Bitcode/BitcodeReader.h"
++#endif
+ #include "llvm/CodeGen/MachineOptimizationRemarkEmitter.h"
+ #include "llvm/Demangle/Demangle.h"
+ #include "llvm/IR/DebugInfo.h"
+@@ -41,17 +43,20 @@
+ #include "llvm/IR/LLVMRemarkStreamer.h"
+ #include "llvm/IR/Module.h"
+ #include "llvm/IR/Verifier.h"
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+ #include "llvm/IRReader/IRReader.h"
+ #include "llvm/LTO/LTOBackend.h"
+ #include "llvm/Linker/Linker.h"
++#endif
+ #include "llvm/Pass.h"
+ #include "llvm/Support/MemoryBuffer.h"
+ #include "llvm/Support/SourceMgr.h"
+ #include "llvm/Support/TimeProfiler.h"
+ #include "llvm/Support/Timer.h"
+ #include "llvm/Support/ToolOutputFile.h"
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+ #include "llvm/Transforms/IPO/Internalize.h"
+-#include "llvm/Transforms/Utils/Cloning.h"
++#endif
+ 
+ #include <optional>
+ using namespace clang;
+@@ -193,6 +198,12 @@ void BackendConsumer::HandleInterestingDecl(DeclGroupRef D) {
+ 
+ // Links each entry in LinkModules into our module. Returns true on error.
+ bool BackendConsumer::LinkInModules(llvm::Module *M) {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  (void)M;
++  assert(LinkModules.empty() &&
++         "TraceCC source-only frontend cannot link LLVM bitcode modules");
++  return false;
++#else
+   for (auto &LM : LinkModules) {
+     assert(LM.Module && "LinkModule does not actually have a module");
+ 
+@@ -226,6 +237,7 @@ bool BackendConsumer::LinkInModules(llvm::Module *M) {
+ 
+   LinkModules.clear();
+   return false; // success
++#endif
+ }
+ 
+ void BackendConsumer::HandleTranslationUnit(ASTContext &C) {
+@@ -870,6 +882,15 @@ CodeGenAction::~CodeGenAction() {
+ }
+ 
+ bool CodeGenAction::loadLinkModules(CompilerInstance &CI) {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  if (!CI.getCodeGenOpts().LinkBitcodeFiles.empty()) {
++    CI.getDiagnostics().Report(CI.getDiagnostics().getCustomDiagID(
++        DiagnosticsEngine::Error,
++        "TraceCC source-only frontend does not support linked LLVM bitcode"));
++    return true;
++  }
++  return false;
++#else
+   if (!LinkModules.empty())
+     return false;
+ 
+@@ -897,6 +918,7 @@ bool CodeGenAction::loadLinkModules(CompilerInstance &CI) {
+                            F.Internalize, F.LinkFlags});
+   }
+   return false;
++#endif
+ }
+ 
+ bool CodeGenAction::hasIRSupport() const { return true; }
+@@ -966,16 +988,19 @@ CodeGenAction::CreateASTConsumer(CompilerInstance &CI, StringRef InFile) {
+     return nullptr;
+ 
+   CoverageSourceInfo *CoverageInfo = nullptr;
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   // Add the preprocessor callback only when the coverage mapping is generated.
+   if (CI.getCodeGenOpts().CoverageMapping)
+     CoverageInfo = CodeGen::CoverageMappingModuleGen::setUpCoverageCallbacks(
+         CI.getPreprocessor());
++#endif
+ 
+   std::unique_ptr<BackendConsumer> Result(new BackendConsumer(
+       CI, BA, CI.getVirtualFileSystemPtr(), *VMContext, std::move(LinkModules),
+       InFile, std::move(OS), CoverageInfo));
+   BEConsumer = Result.get();
+ 
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   // Enable generating macro debug info only when debug info is not disabled and
+   // also macro debug info is enabled.
+   if (CI.getCodeGenOpts().getDebugInfo() != codegenoptions::NoDebugInfo &&
+@@ -985,6 +1010,7 @@ CodeGenAction::CreateASTConsumer(CompilerInstance &CI, StringRef InFile) {
+                                             CI.getPreprocessor());
+     CI.getPreprocessor().addPPCallbacks(std::move(Callbacks));
+   }
++#endif
+ 
+   if (CI.getFrontendOpts().GenReducedBMI &&
+       !CI.getFrontendOpts().ModuleOutputPath.empty()) {
+@@ -1001,6 +1027,14 @@ CodeGenAction::CreateASTConsumer(CompilerInstance &CI, StringRef InFile) {
+ 
+ std::unique_ptr<llvm::Module>
+ CodeGenAction::loadModule(MemoryBufferRef MBRef) {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  (void)MBRef;
++  CompilerInstance &CI = getCompilerInstance();
++  CI.getDiagnostics().Report(CI.getDiagnostics().getCustomDiagID(
++      DiagnosticsEngine::Error,
++      "TraceCC source-only frontend does not accept LLVM IR inputs"));
++  return {};
++#else
+   CompilerInstance &CI = getCompilerInstance();
+   SourceManager &SM = CI.getSourceManager();
+ 
+@@ -1100,9 +1134,20 @@ CodeGenAction::loadModule(MemoryBufferRef MBRef) {
+ 
+   CI.getDiagnostics().Report(Loc, DiagID) << Msg;
+   return {};
++#endif
+ }
+ 
+ void CodeGenAction::ExecuteAction() {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  if (getCurrentFileKind().getLanguage() == Language::LLVM_IR) {
++    CompilerInstance &CI = getCompilerInstance();
++    CI.getDiagnostics().Report(CI.getDiagnostics().getCustomDiagID(
++        DiagnosticsEngine::Error,
++        "TraceCC source-only frontend does not accept LLVM IR inputs"));
++    return;
++  }
++  this->ASTFrontendAction::ExecuteAction();
++#else
+   if (getCurrentFileKind().getLanguage() != Language::LLVM_IR) {
+     this->ASTFrontendAction::ExecuteAction();
+     return;
+@@ -1186,6 +1231,7 @@ void CodeGenAction::ExecuteAction() {
+                     std::move(OS));
+   if (OptRecordFile)
+     OptRecordFile->keep();
++#endif
+ }
+ 
+ //
+diff --git a/clang/lib/CodeGen/CodeGenFunction.cpp b/clang/lib/CodeGen/CodeGenFunction.cpp
+index 6c0589be3..061b02603 100644
+--- a/clang/lib/CodeGen/CodeGenFunction.cpp
++++ b/clang/lib/CodeGen/CodeGenFunction.cpp
+@@ -56,7 +56,11 @@ using namespace clang;
+ using namespace CodeGen;
+ 
+ namespace llvm {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++inline constexpr bool EnableSingleByteCoverage = false;
++#else
+ extern cl::opt<bool> EnableSingleByteCoverage;
++#endif
+ } // namespace llvm
+ 
+ /// shouldEmitLifetimeMarkers - Decide whether we need emit the life-time
+@@ -1266,12 +1270,14 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
+   if (getLangOpts().OpenMP && CurCodeDecl)
+     CGM.getOpenMPRuntime().emitFunctionProlog(*this, CurCodeDecl);
+ 
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   if (FD && getLangOpts().HLSL) {
+     // Handle emitting HLSL entry functions.
+     if (FD->hasAttr<HLSLShaderAttr>()) {
+       CGM.getHLSLRuntime().emitEntryFunction(FD, Fn);
+     }
+   }
++#endif
+ 
+   EmitFunctionProlog(*CurFnInfo, CurFn, Args);
+ 
+@@ -2930,6 +2936,31 @@ void CodeGenFunction::EmitSanitizerStatReport(llvm::SanitizerStatKind SSK) {
+   CGM.getSanStats().create(IRB, SSK);
+ }
+ 
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++// Upstream places this generally useful VLA-aware size helper in
++// CGStmtOpenMP.cpp. TraceCC does not compile that OpenMP translation unit, but
++// HLSL's generic builtin implementation still references the helper even
++// though HLSL itself is unreachable under the fixed frontend contract.
++llvm::Value *CodeGenFunction::getTypeSize(QualType Ty) {
++  ASTContext &C = getContext();
++  llvm::Value *Size = nullptr;
++  auto SizeInChars = C.getTypeSizeInChars(Ty);
++  if (SizeInChars.isZero()) {
++    while (const VariableArrayType *VAT = C.getAsVariableArrayType(Ty)) {
++      VlaSizePair VlaSize = getVLASize(VAT);
++      Ty = VlaSize.Type;
++      Size =
++          Size ? Builder.CreateNUWMul(Size, VlaSize.NumElts) : VlaSize.NumElts;
++    }
++    SizeInChars = C.getTypeSizeInChars(Ty);
++    if (SizeInChars.isZero())
++      return llvm::ConstantInt::get(SizeTy, /*V=*/0);
++    return Builder.CreateNUWMul(Size, CGM.getSize(SizeInChars));
++  }
++  return CGM.getSize(SizeInChars);
++}
++#endif
++
+ void CodeGenFunction::EmitKCFIOperandBundle(
+     const CGCallee &Callee, SmallVectorImpl<llvm::OperandBundleDef> &Bundles) {
+   const CGCalleeInfo &CI = Callee.getAbstractInfo();
+@@ -2944,6 +2975,37 @@ void CodeGenFunction::EmitKCFIOperandBundle(
+   Bundles.emplace_back("kcfi", CGM.CreateKCFITypeId(FP->desugar(), Salt));
+ }
+ 
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++llvm::Value *
++CodeGenFunction::FormAArch64ResolverCondition(const FMVResolverOption &) {
++  llvm_unreachable("function multiversioning is unavailable in TraceCC");
++}
++
++llvm::Value *
++CodeGenFunction::FormX86ResolverCondition(const FMVResolverOption &) {
++  llvm_unreachable("function multiversioning is unavailable in TraceCC");
++}
++
++void CodeGenFunction::EmitMultiVersionResolver(
++    llvm::Function *, ArrayRef<FMVResolverOption>) {
++  llvm_unreachable("function multiversioning is unavailable in TraceCC");
++}
++
++void CodeGenFunction::EmitRISCVMultiVersionResolver(
++    llvm::Function *, ArrayRef<FMVResolverOption>) {
++  llvm_unreachable("function multiversioning is unavailable in TraceCC");
++}
++
++void CodeGenFunction::EmitAArch64MultiVersionResolver(
++    llvm::Function *, ArrayRef<FMVResolverOption>) {
++  llvm_unreachable("function multiversioning is unavailable in TraceCC");
++}
++
++void CodeGenFunction::EmitX86MultiVersionResolver(
++    llvm::Function *, ArrayRef<FMVResolverOption>) {
++  llvm_unreachable("function multiversioning is unavailable in TraceCC");
++}
++#else
+ llvm::Value *
+ CodeGenFunction::FormAArch64ResolverCondition(const FMVResolverOption &RO) {
+   return RO.Features.empty() ? nullptr : EmitAArch64CpuSupports(RO.Features);
+@@ -3206,6 +3268,7 @@ void CodeGenFunction::EmitX86MultiVersionResolver(
+   Builder.CreateUnreachable();
+   Builder.ClearInsertionPoint();
+ }
++#endif
+ 
+ // Loc - where the diagnostic will point, where in the source code this
+ //  alignment has failed.
+diff --git a/clang/lib/CodeGen/CodeGenModule.cpp b/clang/lib/CodeGen/CodeGenModule.cpp
+index 85ed38f14..a3881db0a 100644
+--- a/clang/lib/CodeGen/CodeGenModule.cpp
++++ b/clang/lib/CodeGen/CodeGenModule.cpp
+@@ -88,6 +88,11 @@ static const char AnnotationSection[] = "llvm.metadata";
+ static constexpr auto ErrnoTBAAMDName = "llvm.errno.tbaa";
+ 
+ static CGCXXABI *createCXXABI(CodeGenModule &CGM) {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  assert(CGM.getContext().getCXXABIKind() == TargetCXXABI::WebAssembly &&
++         "TraceCC source-only frontend requires the WebAssembly C++ ABI");
++  return CreateItaniumCXXABI(CGM);
++#else
+   switch (CGM.getContext().getCXXABIKind()) {
+   case TargetCXXABI::AppleARM64:
+   case TargetCXXABI::Fuchsia:
+@@ -105,10 +110,21 @@ static CGCXXABI *createCXXABI(CodeGenModule &CGM) {
+   }
+ 
+   llvm_unreachable("invalid C++ ABI kind");
++#endif
+ }
+ 
+ static std::unique_ptr<TargetCodeGenInfo>
+ createTargetCodeGenInfo(CodeGenModule &CGM) {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  // TraceCC's compiler authority always emits WebAssembly. Avoid retaining
++  // native/GPU ABI factories solely because upstream clang's generic factory
++  // switch names every target implementation.
++  const TargetInfo &TraceCCTarget = CGM.getTarget();
++  WebAssemblyABIKind TraceCCKind = WebAssemblyABIKind::MVP;
++  if (TraceCCTarget.getABI() == "experimental-mv")
++    TraceCCKind = WebAssemblyABIKind::ExperimentalMV;
++  return createWebAssemblyTargetCodeGenInfo(CGM, TraceCCKind);
++#else
+   const TargetInfo &Target = CGM.getTarget();
+   const llvm::Triple &Triple = Target.getTriple();
+   const CodeGenOptions &CodeGenOpts = CGM.getCodeGenOpts();
+@@ -324,6 +340,7 @@ createTargetCodeGenInfo(CodeGenModule &CGM) {
+         CGM, Target.getPointerWidth(LangAS::Default), ABIFRLen);
+   }
+   }
++#endif
+ }
+ 
+ const TargetCodeGenInfo &CodeGenModule::getTargetCodeGenInfo() {
+@@ -502,8 +519,10 @@ CodeGenModule::CodeGenModule(ASTContext &C,
+ 
+   // If coverage mapping generation is enabled, create the
+   // CoverageMappingModuleGen object.
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   if (CodeGenOpts.CoverageMapping)
+     CoverageMapping.reset(new CoverageMappingModuleGen(*this, *CoverageInfo));
++#endif
+ 
+   // Generate the module name hash here if needed.
+   if (CodeGenOpts.UniqueInternalLinkageNames &&
+@@ -555,6 +574,9 @@ CodeGenModule::CodeGenModule(ASTContext &C,
+ CodeGenModule::~CodeGenModule() {}
+ 
+ void CodeGenModule::createObjCRuntime() {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  llvm_unreachable("Objective-C is unavailable in TraceCC");
++#else
+   // This is just isGNUFamily(), but we want to force implementors of
+   // new ABIs to decide how best to do this.
+   switch (LangOpts.ObjCRuntime.getKind()) {
+@@ -572,13 +594,21 @@ void CodeGenModule::createObjCRuntime() {
+     return;
+   }
+   llvm_unreachable("bad runtime kind");
++#endif
+ }
+ 
+ void CodeGenModule::createOpenCLRuntime() {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  llvm_unreachable("OpenCL is unavailable in TraceCC");
++#else
+   OpenCLRuntime.reset(new CGOpenCLRuntime(*this));
++#endif
+ }
+ 
+ void CodeGenModule::createOpenMPRuntime() {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  llvm_unreachable("OpenMP is unavailable in TraceCC");
++#else
+   if (!LangOpts.OMPHostIRFile.empty() && !FS->exists(LangOpts.OMPHostIRFile))
+     Diags.Report(diag::err_omp_host_ir_file_not_found)
+         << LangOpts.OMPHostIRFile;
+@@ -602,14 +632,23 @@ void CodeGenModule::createOpenMPRuntime() {
+       OpenMPRuntime.reset(new CGOpenMPRuntime(*this));
+     break;
+   }
++#endif
+ }
+ 
+ void CodeGenModule::createCUDARuntime() {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  llvm_unreachable("CUDA is unavailable in TraceCC");
++#else
+   CUDARuntime.reset(CreateNVCUDARuntime(*this));
++#endif
+ }
+ 
+ void CodeGenModule::createHLSLRuntime() {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  llvm_unreachable("HLSL is unavailable in TraceCC");
++#else
+   HLSLRuntime.reset(new CGHLSLRuntime(*this));
++#endif
+ }
+ 
+ void CodeGenModule::addReplacement(StringRef Name, llvm::Constant *C) {
+@@ -985,10 +1024,12 @@ void CodeGenModule::Release() {
+     if (llvm::Function *CudaCtorFunction = CUDARuntime->finalizeModule())
+       AddGlobalCtor(CudaCtorFunction);
+   }
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   if (OpenMPRuntime) {
+     OpenMPRuntime->createOffloadEntriesAndInfoMetadata();
+     OpenMPRuntime->clear();
+   }
++#endif
+   if (PGOReader) {
+     getModule().setProfileSummary(
+         PGOReader->getSummary(/* UseCS */ false).getMD(VMContext),
+@@ -1004,11 +1045,15 @@ void CodeGenModule::Release() {
+   EmitGlobalAnnotations();
+   EmitStaticExternCAliases();
+   checkAliases();
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   EmitDeferredUnusedCoverageMappings();
++#endif
+   CodeGenPGO(*this).setValueProfilingFlag(getModule());
+   CodeGenPGO(*this).setProfileVersion(getModule());
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   if (CoverageMapping)
+     CoverageMapping->emit();
++#endif
+   if (CodeGenOpts.SanitizeCfiCrossDso) {
+     CodeGenFunction(*this).EmitCfiCheckFail();
+     CodeGenFunction(*this).EmitCfiCheckStub();
+@@ -1463,8 +1508,10 @@ void CodeGenModule::Release() {
+   }
+ 
+   // HLSL related end of code gen work items.
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   if (LangOpts.HLSL)
+     getHLSLRuntime().finishCodeGen();
++#endif
+ 
+   if (uint32_t PLevel = Context.getLangOpts().PICLevel) {
+     assert(PLevel < 3 && "Invalid PIC Level");
+@@ -3553,9 +3600,11 @@ void CodeGenModule::EmitModuleLinkOptions() {
+ }
+ 
+ void CodeGenModule::EmitDeferred() {
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   // Emit deferred declare target declarations.
+   if (getLangOpts().OpenMP && !getLangOpts().OpenMPSimd)
+     getOpenMPRuntime().emitDeferredTargetDecls();
++#endif
+ 
+   // Emit code for any potentially referenced deferred decls.  Since a
+   // previously unused static decl may become used during the generation of code
+@@ -4268,6 +4317,7 @@ void CodeGenModule::EmitGlobal(GlobalDecl GD) {
+     assert(VD->isFileVarDecl() && "Cannot emit local var decl as global.");
+     if (VD->isThisDeclarationADefinition() != VarDecl::Definition &&
+         !Context.isMSStaticDataMemberInlineDefinition(VD)) {
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+       if (LangOpts.OpenMP) {
+         // Emit declaration of the must-be-emitted declare target variable.
+         if (std::optional<OMPDeclareTargetDeclAttr::MapTypeTy> Res =
+@@ -4297,6 +4347,7 @@ void CodeGenModule::EmitGlobal(GlobalDecl GD) {
+           return;
+         }
+       }
++#endif
+       // If this declaration may have caused an inline variable definition to
+       // change linkage, make sure that it's emitted.
+       if (Context.getInlineVariableDefinitionKind(VD) ==
+@@ -5053,6 +5104,7 @@ llvm::Constant *CodeGenModule::GetOrCreateLLVMFunction(
+   std::string NameWithoutMultiVersionMangling;
+   if (const FunctionDecl *FD = cast_or_null<FunctionDecl>(D)) {
+     // For the device mark the function as one that should be emitted.
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+     if (getLangOpts().OpenMPIsTargetDevice && OpenMPRuntime &&
+         !OpenMPRuntime->markAsGlobalTarget(GD) && FD->isDefined() &&
+         !DontDefer && !IsForDefinition) {
+@@ -5067,6 +5119,7 @@ llvm::Constant *CodeGenModule::GetOrCreateLLVMFunction(
+         EmitGlobal(GDDef);
+       }
+     }
++#endif
+ 
+     // Any attempts to use a MultiVersion function should result in retrieving
+     // the iFunc instead. Name Mangling will handle the rest of the changes.
+@@ -6132,8 +6185,10 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D,
+     GV->setInitializer(Init);
+   }
+ 
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   if (LangOpts.HLSL)
+     getHLSLRuntime().handleGlobalVarDefinition(D, GV);
++#endif
+ 
+   if (emitter)
+     emitter->finalize(GV);
+@@ -7738,11 +7793,19 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
+     break;
+ 
+   case Decl::HLSLRootSignature:
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++    llvm_unreachable("HLSL declarations are unavailable in TraceCC");
++#else
+     getHLSLRuntime().addRootSignature(cast<HLSLRootSignatureDecl>(D));
+     break;
++#endif
+   case Decl::HLSLBuffer:
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++    llvm_unreachable("HLSL declarations are unavailable in TraceCC");
++#else
+     getHLSLRuntime().addBuffer(cast<HLSLBufferDecl>(D));
+     break;
++#endif
+ 
+   case Decl::OpenACCDeclare:
+     EmitOpenACCDeclare(cast<OpenACCDeclareDecl>(D));
+@@ -7761,6 +7824,10 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
+ }
+ 
+ void CodeGenModule::AddDeferredUnusedCoverageMapping(Decl *D) {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  (void)D;
++  return;
++#else
+   // Do we need to generate coverage mapping?
+   if (!CodeGenOpts.CoverageMapping)
+     return;
+@@ -7785,9 +7852,14 @@ void CodeGenModule::AddDeferredUnusedCoverageMapping(Decl *D) {
+   default:
+     break;
+   };
++#endif
+ }
+ 
+ void CodeGenModule::ClearUnusedCoverageMapping(const Decl *D) {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  (void)D;
++  return;
++#else
+   // Do we need to generate coverage mapping?
+   if (!CodeGenOpts.CoverageMapping)
+     return;
+@@ -7796,9 +7868,13 @@ void CodeGenModule::ClearUnusedCoverageMapping(const Decl *D) {
+       ClearUnusedCoverageMapping(Fn->getTemplateInstantiationPattern());
+   }
+   DeferredEmptyCoverageMappingDecls.insert_or_assign(D, false);
++#endif
+ }
+ 
+ void CodeGenModule::EmitDeferredUnusedCoverageMappings() {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  return;
++#else
+   // We call takeVector() here to avoid use-after-free.
+   // FIXME: DeferredEmptyCoverageMappingDecls is getting mutated because
+   // we deserialize function bodies to emit coverage info for them, and that
+@@ -7836,6 +7912,7 @@ void CodeGenModule::EmitDeferredUnusedCoverageMappings() {
+       break;
+     };
+   }
++#endif
+ }
+ 
+ void CodeGenModule::EmitMainVoidAlias() {
+diff --git a/clang/lib/CodeGen/CodeGenPGO.cpp b/clang/lib/CodeGen/CodeGenPGO.cpp
+index 359b4e00a..30c963b2f 100644
+--- a/clang/lib/CodeGen/CodeGenPGO.cpp
++++ b/clang/lib/CodeGen/CodeGenPGO.cpp
+@@ -25,7 +25,11 @@
+ #include <optional>
+ 
+ namespace llvm {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++inline constexpr bool EnableSingleByteCoverage = false;
++#else
+ extern cl::opt<bool> EnableSingleByteCoverage;
++#endif
+ } // namespace llvm
+ 
+ static llvm::cl::opt<bool>
+@@ -1042,9 +1046,11 @@ void CodeGenPGO::assignRegionCounters(GlobalDecl GD, llvm::Function *Fn) {
+     return;
+ 
+   SourceManager &SM = CGM.getContext().getSourceManager();
++#ifndef CLANG_TRACECC_LEAN_SOURCE_ONLY
+   if (!llvm::coverage::SystemHeadersCoverage &&
+       SM.isInSystemHeader(D->getLocation()))
+     return;
++#endif
+ 
+   setFuncName(Fn);
+ 
+@@ -1101,6 +1107,10 @@ void CodeGenPGO::mapRegionCounters(const Decl *D) {
+ }
+ 
+ bool CodeGenPGO::skipRegionMappingForDecl(const Decl *D) {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  (void)D;
++  return true;
++#else
+   if (!D->getBody())
+     return true;
+ 
+@@ -1120,9 +1130,14 @@ bool CodeGenPGO::skipRegionMappingForDecl(const Decl *D) {
+   const auto &SM = CGM.getContext().getSourceManager();
+   auto Loc = D->getBody()->getBeginLoc();
+   return !llvm::coverage::SystemHeadersCoverage && SM.isInSystemHeader(Loc);
++#endif
+ }
+ 
+ void CodeGenPGO::emitCounterRegionMapping(const Decl *D) {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  (void)D;
++  return;
++#else
+   if (skipRegionMappingForDecl(D))
+     return;
+ 
+@@ -1149,11 +1164,18 @@ void CodeGenPGO::emitCounterRegionMapping(const Decl *D) {
+ 
+   CGM.getCoverageMapping()->addFunctionMappingRecord(
+       FuncNameVar, FuncName, FunctionHash, CoverageMapping);
++#endif
+ }
+ 
+ void
+ CodeGenPGO::emitEmptyCounterMapping(const Decl *D, StringRef Name,
+                                     llvm::GlobalValue::LinkageTypes Linkage) {
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++  (void)D;
++  (void)Name;
++  (void)Linkage;
++  return;
++#else
+   if (skipRegionMappingForDecl(D))
+     return;
+ 
+@@ -1170,6 +1192,7 @@ CodeGenPGO::emitEmptyCounterMapping(const Decl *D, StringRef Name,
+   setFuncName(Name, Linkage);
+   CGM.getCoverageMapping()->addFunctionMappingRecord(
+       FuncNameVar, FuncName, FunctionHash, CoverageMapping, false);
++#endif
+ }
+ 
+ void CodeGenPGO::computeRegionCounts(const Decl *D) {
+diff --git a/clang/lib/CodeGen/CodeGenTypes.cpp b/clang/lib/CodeGen/CodeGenTypes.cpp
+index 0e1131d58..6d00105eb 100644
+--- a/clang/lib/CodeGen/CodeGenTypes.cpp
++++ b/clang/lib/CodeGen/CodeGenTypes.cpp
+@@ -596,8 +596,12 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
+ #include "clang/Basic/AMDGPUTypes.def"
+ #define HLSL_INTANGIBLE_TYPE(Name, Id, SingletonId) case BuiltinType::Id:
+ #include "clang/Basic/HLSLIntangibleTypes.def"
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++      llvm_unreachable("HLSL types are unavailable in TraceCC");
++#else
+       ResultType = CGM.getHLSLRuntime().convertHLSLSpecificType(Ty);
+       break;
++#endif
+     case BuiltinType::Dependent:
+ #define BUILTIN_TYPE(Id, SingletonId)
+ #define PLACEHOLDER_TYPE(Id, SingletonId) \
+@@ -780,8 +784,12 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
+   }
+   case Type::HLSLAttributedResource:
+   case Type::HLSLInlineSpirv:
++#ifdef CLANG_TRACECC_LEAN_SOURCE_ONLY
++    llvm_unreachable("HLSL types are unavailable in TraceCC");
++#else
+     ResultType = CGM.getHLSLRuntime().convertHLSLSpecificType(Ty);
+     break;
++#endif
+   }
+ 
+   assert(ResultType && "Didn't convert a type?");
+diff --git a/clang/lib/Sema/SemaChecking.cpp b/clang/lib/Sema/SemaChecking.cpp
+index 77246a5d6..00e238317 100644
+--- a/clang/lib/Sema/SemaChecking.cpp
++++ b/clang/lib/Sema/SemaChecking.cpp
+@@ -2071,63 +2071,17 @@ static void CheckNonNullArgument(Sema &S, const Expr *ArgExpr,
+ 
+ bool Sema::CheckTSBuiltinFunctionCall(const TargetInfo &TI, unsigned BuiltinID,
+                                       CallExpr *TheCall) {
++  // TraceCC's trusted compiler authority fixes the target triple to
++  // WebAssembly. Keeping the native/GPU target checkers reachable from this
++  // dispatcher pulls their generated builtin tables and semantic handlers into
++  // the browser module even though no TraceKernel request can select them.
+   switch (TI.getTriple().getArch()) {
+-  default:
+-    // Some builtins don't require additional checking, so just consider these
+-    // acceptable.
+-    return false;
+-  case llvm::Triple::arm:
+-  case llvm::Triple::armeb:
+-  case llvm::Triple::thumb:
+-  case llvm::Triple::thumbeb:
+-    return ARM().CheckARMBuiltinFunctionCall(TI, BuiltinID, TheCall);
+-  case llvm::Triple::aarch64:
+-  case llvm::Triple::aarch64_32:
+-  case llvm::Triple::aarch64_be:
+-    return ARM().CheckAArch64BuiltinFunctionCall(TI, BuiltinID, TheCall);
+-  case llvm::Triple::bpfeb:
+-  case llvm::Triple::bpfel:
+-    return BPF().CheckBPFBuiltinFunctionCall(BuiltinID, TheCall);
+-  case llvm::Triple::dxil:
+-    return DirectX().CheckDirectXBuiltinFunctionCall(BuiltinID, TheCall);
+-  case llvm::Triple::hexagon:
+-    return Hexagon().CheckHexagonBuiltinFunctionCall(BuiltinID, TheCall);
+-  case llvm::Triple::mips:
+-  case llvm::Triple::mipsel:
+-  case llvm::Triple::mips64:
+-  case llvm::Triple::mips64el:
+-    return MIPS().CheckMipsBuiltinFunctionCall(TI, BuiltinID, TheCall);
+-  case llvm::Triple::spirv:
+-  case llvm::Triple::spirv32:
+-  case llvm::Triple::spirv64:
+-    if (TI.getTriple().getOS() != llvm::Triple::OSType::AMDHSA)
+-      return SPIRV().CheckSPIRVBuiltinFunctionCall(TI, BuiltinID, TheCall);
+-    return false;
+-  case llvm::Triple::systemz:
+-    return SystemZ().CheckSystemZBuiltinFunctionCall(BuiltinID, TheCall);
+-  case llvm::Triple::x86:
+-  case llvm::Triple::x86_64:
+-    return X86().CheckBuiltinFunctionCall(TI, BuiltinID, TheCall);
+-  case llvm::Triple::ppc:
+-  case llvm::Triple::ppcle:
+-  case llvm::Triple::ppc64:
+-  case llvm::Triple::ppc64le:
+-    return PPC().CheckPPCBuiltinFunctionCall(TI, BuiltinID, TheCall);
+-  case llvm::Triple::amdgcn:
+-    return AMDGPU().CheckAMDGCNBuiltinFunctionCall(BuiltinID, TheCall);
+-  case llvm::Triple::riscv32:
+-  case llvm::Triple::riscv64:
+-    return RISCV().CheckBuiltinFunctionCall(TI, BuiltinID, TheCall);
+-  case llvm::Triple::loongarch32:
+-  case llvm::Triple::loongarch64:
+-    return LoongArch().CheckLoongArchBuiltinFunctionCall(TI, BuiltinID,
+-                                                         TheCall);
+   case llvm::Triple::wasm32:
+   case llvm::Triple::wasm64:
+     return Wasm().CheckWebAssemblyBuiltinFunctionCall(TI, BuiltinID, TheCall);
+-  case llvm::Triple::nvptx:
+-  case llvm::Triple::nvptx64:
+-    return NVPTX().CheckNVPTXBuiltinFunctionCall(TI, BuiltinID, TheCall);
++  default:
++    // Target-independent builtins do not require an additional checker.
++    return false;
+   }
+ }
+ 
+diff --git a/clang/tools/driver/CMakeLists.txt b/clang/tools/driver/CMakeLists.txt
+index 002aaef00..075e4ec52 100644
+--- a/clang/tools/driver/CMakeLists.txt
++++ b/clang/tools/driver/CMakeLists.txt
+@@ -80,6 +80,8 @@ endif()
+ 
+ add_dependencies(clang clang-resource-headers)
+ 
++add_subdirectory(tracecc1-clean)
++
+ if(NOT CLANG_LINKS_TO_CREATE)
+   set(CLANG_LINKS_TO_CREATE clang++ clang-cl clang-cpp)
+ endif()
+diff --git a/lld/tools/lld/CMakeLists.txt b/lld/tools/lld/CMakeLists.txt
+index 8498a9159..a51442ffd 100644
+--- a/lld/tools/lld/CMakeLists.txt
++++ b/lld/tools/lld/CMakeLists.txt
+@@ -8,6 +8,7 @@ add_lld_tool(lld
+ 
+   SUPPORT_PLUGINS
+   GENERATE_DRIVER
++  PARTIAL_SOURCES_INTENDED
+   )
+ export_executable_symbols_for_plugins(lld)
+ 
+@@ -34,6 +35,18 @@ lld_target_link_libraries(lld
+   lldWasm
+   )
+ 
++# Experimental TraceCC linker: retain only the WebAssembly driver and the
++# common dispatcher needed to preserve LLD's normal exit/error behavior.
++add_lld_tool(tracewasmld
++  tracewasmld.cpp
++  PARTIAL_SOURCES_INTENDED
++  )
++lld_target_link_libraries(tracewasmld
++  PRIVATE
++  lldCommon
++  lldWasm
++  )
++
+ if(NOT LLD_SYMLINKS_TO_CREATE)
+   set(LLD_SYMLINKS_TO_CREATE
+       lld-link ld.lld ld64.lld wasm-ld)
+diff --git a/lld/wasm/CMakeLists.txt b/lld/wasm/CMakeLists.txt
+index 05b12d76d..35ff94215 100644
+--- a/lld/wasm/CMakeLists.txt
++++ b/lld/wasm/CMakeLists.txt
+@@ -2,11 +2,26 @@ set(LLVM_TARGET_DEFINITIONS Options.td)
+ tablegen(LLVM Options.inc -gen-opt-parser-defs)
+ add_public_tablegen_target(WasmOptionsTableGen)
+ 
++option(LLD_WASM_TRACECC_NO_BITCODE
++  "Build the TraceCC Wasm linker without LLVM bitcode/LTO support" OFF)
++
++set(LLD_WASM_LTO_SOURCES LTO.cpp)
++set(LLD_WASM_LTO_COMPONENTS
++  BitWriter
++  LTO
++  Passes
++)
++if (LLD_WASM_TRACECC_NO_BITCODE)
++  set(LLD_WASM_LTO_SOURCES)
++  set(LLD_WASM_LTO_COMPONENTS)
++  set(LLD_WASM_PARTIAL_SOURCES PARTIAL_SOURCES_INTENDED)
++endif()
++
+ add_lld_library(lldWasm
+   Driver.cpp
+   InputChunks.cpp
+   InputFiles.cpp
+-  LTO.cpp
++  ${LLD_WASM_LTO_SOURCES}
+   MapFile.cpp
+   MarkLive.cpp
+   OutputSections.cpp
+@@ -18,20 +33,20 @@ add_lld_library(lldWasm
+   Writer.cpp
+   WriterUtils.cpp
+ 
++  ${LLD_WASM_PARTIAL_SOURCES}
++
+   LINK_COMPONENTS
+   ${LLVM_TARGETS_TO_BUILD}
+   BinaryFormat
+-  BitWriter
+   Core
+   Demangle
+-  LTO
+   MC
+   Object
+   Option
+-  Passes
+   ProfileData
+   Support
+   TargetParser
++  ${LLD_WASM_LTO_COMPONENTS}
+ 
+   LINK_LIBS
+   lldCommon
+@@ -40,3 +55,8 @@ add_lld_library(lldWasm
+   WasmOptionsTableGen
+   intrinsics_gen
+   )
++
++if (LLD_WASM_TRACECC_NO_BITCODE)
++  target_compile_definitions(lldWasm PRIVATE
++    LLD_WASM_TRACECC_NO_BITCODE=1)
++endif()
+diff --git a/lld/wasm/Config.h b/lld/wasm/Config.h
+index 9d903e0c7..cbf95202e 100644
+--- a/lld/wasm/Config.h
++++ b/lld/wasm/Config.h
+@@ -27,7 +27,9 @@ class InputFile;
+ class StubFile;
+ class ObjFile;
+ class SharedFile;
++#ifndef LLD_WASM_TRACECC_NO_BITCODE
+ class BitcodeFile;
++#endif
+ class InputTable;
+ class InputGlobal;
+ class InputFunction;
+@@ -140,8 +142,10 @@ struct Ctx {
+   llvm::SmallVector<ObjFile *, 0> objectFiles;
+   llvm::SmallVector<StubFile *, 0> stubFiles;
+   llvm::SmallVector<SharedFile *, 0> sharedFiles;
++#ifndef LLD_WASM_TRACECC_NO_BITCODE
+   llvm::SmallVector<BitcodeFile *, 0> bitcodeFiles;
+   llvm::SmallVector<BitcodeFile *, 0> lazyBitcodeFiles;
++#endif
+   llvm::SmallVector<InputFunction *, 0> syntheticFunctions;
+   llvm::SmallVector<InputGlobal *, 0> syntheticGlobals;
+   llvm::SmallVector<InputTable *, 0> syntheticTables;
+diff --git a/lld/wasm/Driver.cpp b/lld/wasm/Driver.cpp
+index d18126bef..73bfa2230 100644
+--- a/lld/wasm/Driver.cpp
++++ b/lld/wasm/Driver.cpp
+@@ -21,6 +21,7 @@
+ #include "lld/Common/Reproduce.h"
+ #include "lld/Common/Strings.h"
+ #include "lld/Common/Version.h"
++#include "llvm/ADT/StringExtras.h"
+ #include "llvm/ADT/Twine.h"
+ #include "llvm/Config/llvm-config.h"
+ #include "llvm/Option/Arg.h"
+@@ -60,8 +61,10 @@ void Ctx::reset() {
+   objectFiles.clear();
+   stubFiles.clear();
+   sharedFiles.clear();
++#ifndef LLD_WASM_TRACECC_NO_BITCODE
+   bitcodeFiles.clear();
+   lazyBitcodeFiles.clear();
++#endif
+   syntheticFunctions.clear();
+   syntheticGlobals.clear();
+   syntheticTables.clear();
+@@ -86,12 +89,14 @@ enum {
+ // LTO calls LLVM functions to compile bitcode files to native code.
+ // Technically this can be delayed until we read bitcode files, but
+ // we don't bother to do lazily because the initialization is fast.
++#ifndef LLD_WASM_TRACECC_NO_BITCODE
+ static void initLLVM() {
+   InitializeAllTargets();
+   InitializeAllTargetMCs();
+   InitializeAllAsmPrinters();
+   InitializeAllAsmParsers();
+ }
++#endif
+ 
+ class LinkerDriver {
+ public:
+@@ -139,7 +144,9 @@ bool link(ArrayRef<const char *> args, llvm::raw_ostream &stdoutOS,
+ 
+   symtab = make<SymbolTable>();
+ 
++#ifndef LLD_WASM_TRACECC_NO_BITCODE
+   initLLVM();
++#endif
+   LinkerDriver(ctx).linkerMain(args);
+ 
+   return errorCount() == 0;
+@@ -329,8 +336,17 @@ void LinkerDriver::addFile(StringRef path) {
+ 
+     for (const auto &[m, offset] : members) {
+       auto magic = identify_magic(m.getBuffer());
+-      if (magic == file_magic::wasm_object || magic == file_magic::bitcode)
++      if (magic == file_magic::wasm_object)
+         files.push_back(createObjectFile(m, path, offset, true));
++#ifdef LLD_WASM_TRACECC_NO_BITCODE
++      else if (magic == file_magic::bitcode)
++        error(path + ": archive member '" + m.getBufferIdentifier() +
++              "' is LLVM bitcode, which is unsupported by the TraceCC "
++              "object-only linker");
++#else
++      else if (magic == file_magic::bitcode)
++        files.push_back(createObjectFile(m, path, offset, true));
++#endif
+       else
+         warn(path + ": archive member '" + m.getBufferIdentifier() +
+              "' is neither Wasm object file nor LLVM bitcode");
+@@ -338,7 +354,14 @@ void LinkerDriver::addFile(StringRef path) {
+ 
+     return;
+   }
++#ifdef LLD_WASM_TRACECC_NO_BITCODE
++  case file_magic::bitcode:
++    error(path +
++          ": LLVM bitcode is unsupported by the TraceCC object-only linker");
++    break;
++#else
+   case file_magic::bitcode:
++#endif
+   case file_magic::wasm_object: {
+     auto obj = createObjectFile(mbref, "", 0, inLib);
+     if (ctx.arg.isStatic && isa<SharedFile>(obj)) {
+@@ -854,6 +877,7 @@ static Symbol *handleUndefined(StringRef name, const char *option) {
+   return sym;
+ }
+ 
++#ifndef LLD_WASM_TRACECC_NO_BITCODE
+ static void handleLibcall(StringRef name) {
+   Symbol *sym = symtab->find(name);
+   if (sym && sym->isLazy() && isa<BitcodeFile>(sym->getFile())) {
+@@ -862,6 +886,7 @@ static void handleLibcall(StringRef name) {
+     cast<LazySymbol>(sym)->extract();
+   }
+ }
++#endif
+ 
+ static void writeWhyExtract() {
+   if (ctx.arg.whyExtract.empty())
+@@ -1018,6 +1043,7 @@ static void createOptionalSymbols() {
+     ctx.sym.tlsBase = createOptionalGlobal("__tls_base", false);
+ }
+ 
++#ifndef LLD_WASM_TRACECC_NO_BITCODE
+ static void processStubLibrariesPreLTO() {
+   log("-- processStubLibrariesPreLTO");
+   for (auto &stub_file : ctx.stubFiles) {
+@@ -1050,6 +1076,7 @@ static void processStubLibrariesPreLTO() {
+     }
+   }
+ }
++#endif
+ 
+ static bool addStubSymbolDeps(const StubFile *stub_file, Symbol *sym,
+                               ArrayRef<StringRef> deps) {
+@@ -1416,6 +1443,7 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
+   // Create wrapped symbols for -wrap option.
+   std::vector<WrappedSymbol> wrapped = addWrappedSymbols(args);
+ 
++#ifndef LLD_WASM_TRACECC_NO_BITCODE
+   // If any of our inputs are bitcode files, the LTO code generator may create
+   // references to certain library functions that might not be explicit in the
+   // bitcode file's symbol table. If any of those library functions are defined
+@@ -1454,6 +1482,10 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
+   // Bail out if normal linked output is skipped due to LTO.
+   if (ctx.arg.thinLTOIndexOnly)
+     return;
++#else
++  processStubLibraries();
++  writeWhyExtract();
++#endif
+ 
+   createOptionalSymbols();
+ 
+diff --git a/lld/wasm/InputChunks.h b/lld/wasm/InputChunks.h
+index 1fe78d766..e144a0d1e 100644
+--- a/lld/wasm/InputChunks.h
++++ b/lld/wasm/InputChunks.h
+@@ -25,6 +25,7 @@
+ #include "lld/Common/ErrorHandler.h"
+ #include "lld/Common/LLVM.h"
+ #include "llvm/ADT/CachedHashString.h"
++#include "llvm/ADT/StringExtras.h"
+ #include "llvm/MC/StringTableBuilder.h"
+ #include "llvm/Object/Wasm.h"
+ #include <optional>
+diff --git a/lld/wasm/InputFiles.cpp b/lld/wasm/InputFiles.cpp
+index 387b5eb10..20aa27fa6 100644
+--- a/lld/wasm/InputFiles.cpp
++++ b/lld/wasm/InputFiles.cpp
+@@ -97,8 +97,13 @@ InputFile *createObjectFile(MemoryBufferRef mb, StringRef archiveName,
+     return make<ObjFile>(mb, archiveName, lazy);
+   }
+ 
++#ifdef LLD_WASM_TRACECC_NO_BITCODE
++  fatal(toString(mb.getBufferIdentifier()) +
++        ": LLVM bitcode is unsupported by the TraceCC object-only linker");
++#else
+   assert(magic == file_magic::bitcode);
+   return make<BitcodeFile>(mb, archiveName, offsetInArchive, lazy);
++#endif
+ }
+ 
+ // Relocations contain either symbol or type indices.  This function takes a
+@@ -804,6 +809,7 @@ void StubFile::parse() {
+   }
+ }
+ 
++#ifndef LLD_WASM_TRACECC_NO_BITCODE
+ static uint8_t mapVisibility(GlobalValue::VisibilityTypes gvVisibility) {
+   switch (gvVisibility) {
+   case GlobalValue::DefaultVisibility:
+@@ -905,6 +911,7 @@ void BitcodeFile::parse(StringRef symName) {
+   for (const lto::InputFile::Symbol &objSym : obj->symbols())
+     symbols.push_back(createBitcodeSymbol(keptComdats, objSym, *this));
+ }
++#endif
+ 
+ } // namespace wasm
+ } // namespace lld
+diff --git a/lld/wasm/InputFiles.h b/lld/wasm/InputFiles.h
+index fd7fcb13f..81822e845 100644
+--- a/lld/wasm/InputFiles.h
++++ b/lld/wasm/InputFiles.h
+@@ -13,7 +13,9 @@
+ #include "lld/Common/LLVM.h"
+ #include "llvm/ADT/DenseMap.h"
+ #include "llvm/ADT/DenseSet.h"
++#ifndef LLD_WASM_TRACECC_NO_BITCODE
+ #include "llvm/LTO/LTO.h"
++#endif
+ #include "llvm/Object/Wasm.h"
+ #include "llvm/Support/MemoryBuffer.h"
+ #include "llvm/TargetParser/Triple.h"
+@@ -160,6 +162,7 @@ public:
+ };
+ 
+ // .bc file
++#ifndef LLD_WASM_TRACECC_NO_BITCODE
+ class BitcodeFile : public InputFile {
+ public:
+   BitcodeFile(MemoryBufferRef m, StringRef archiveName,
+@@ -174,6 +177,7 @@ public:
+   // being added.
+   static bool doneLTO;
+ };
++#endif
+ 
+ // Stub library (See docs/WebAssembly.rst)
+ class StubFile : public InputFile {
+diff --git a/lld/wasm/SymbolTable.cpp b/lld/wasm/SymbolTable.cpp
+index 91677b34e..d20eacf70 100644
+--- a/lld/wasm/SymbolTable.cpp
++++ b/lld/wasm/SymbolTable.cpp
+@@ -28,12 +28,16 @@ void SymbolTable::addFile(InputFile *file, StringRef symName) {
+ 
+   // Lazy object file
+   if (file->lazy) {
++#ifndef LLD_WASM_TRACECC_NO_BITCODE
+     if (auto *f = dyn_cast<BitcodeFile>(file)) {
+       ctx.lazyBitcodeFiles.push_back(f);
+       f->parseLazy();
+     } else {
+       cast<ObjFile>(file)->parseLazy();
+     }
++#else
++    cast<ObjFile>(file)->parseLazy();
++#endif
+     return;
+   }
+ 
+@@ -57,6 +61,7 @@ void SymbolTable::addFile(InputFile *file, StringRef symName) {
+     message(toString(file));
+ 
+   // LLVM bitcode file
++#ifndef LLD_WASM_TRACECC_NO_BITCODE
+   if (auto *f = dyn_cast<BitcodeFile>(file)) {
+     // This order, first adding to `bitcodeFiles` and then parsing is necessary.
+     // See https://github.com/llvm/llvm-project/pull/73095
+@@ -64,6 +69,7 @@ void SymbolTable::addFile(InputFile *file, StringRef symName) {
+     f->parse(symName);
+     return;
+   }
++#endif
+ 
+   // Regular object file
+   auto *f = cast<ObjFile>(file);
+@@ -78,6 +84,7 @@ void SymbolTable::addFile(InputFile *file, StringRef symName) {
+ // using LLVM functions and replaces bitcode symbols with the results.
+ // Because all bitcode files that the program consists of are passed
+ // to the compiler at once, it can do whole-program optimization.
++#ifndef LLD_WASM_TRACECC_NO_BITCODE
+ void SymbolTable::compileBitcodeFiles() {
+   // Prevent further LTO objects being included
+   BitcodeFile::doneLTO = true;
+@@ -93,6 +100,7 @@ void SymbolTable::compileBitcodeFiles() {
+     ctx.objectFiles.push_back(obj);
+   }
+ }
++#endif
+ 
+ Symbol *SymbolTable::find(StringRef name) {
+   auto it = symMap.find(CachedHashStringRef(name));
+diff --git a/lld/wasm/SymbolTable.h b/lld/wasm/SymbolTable.h
+index 5d09d8b68..fb57dc2c7 100644
+--- a/lld/wasm/SymbolTable.h
++++ b/lld/wasm/SymbolTable.h
+@@ -10,7 +10,9 @@
+ #define LLD_WASM_SYMBOL_TABLE_H
+ 
+ #include "InputFiles.h"
++#ifndef LLD_WASM_TRACECC_NO_BITCODE
+ #include "LTO.h"
++#endif
+ #include "Symbols.h"
+ #include "lld/Common/LLVM.h"
+ #include "llvm/ADT/CachedHashString.h"
+@@ -42,7 +44,9 @@ public:
+ 
+   void addFile(InputFile *file, StringRef symName = {});
+ 
++#ifndef LLD_WASM_TRACECC_NO_BITCODE
+   void compileBitcodeFiles();
++#endif
+ 
+   Symbol *find(StringRef name);
+ 
+@@ -134,7 +138,9 @@ private:
+   llvm::DenseSet<llvm::CachedHashStringRef> comdatGroups;
+ 
+   // For LTO.
++#ifndef LLD_WASM_TRACECC_NO_BITCODE
+   std::unique_ptr<BitcodeCompiler> lto;
++#endif
+ };
+ 
+ extern SymbolTable *symtab;
+diff --git a/lld/wasm/SyntheticSections.cpp b/lld/wasm/SyntheticSections.cpp
+index 5e7b9c229..5f22969ce 100644
+--- a/lld/wasm/SyntheticSections.cpp
++++ b/lld/wasm/SyntheticSections.cpp
+@@ -18,6 +18,7 @@
+ #include "SymbolTable.h"
+ #include "llvm/BinaryFormat/Wasm.h"
+ #include "llvm/Support/Path.h"
++#include <map>
+ #include <optional>
+ 
+ using namespace llvm;
+diff --git a/lld/wasm/Writer.cpp b/lld/wasm/Writer.cpp
+index 9a5b56fc5..657dca6cb 100644
+--- a/lld/wasm/Writer.cpp
++++ b/lld/wasm/Writer.cpp
+@@ -34,6 +34,7 @@
+ #include "llvm/Support/xxhash.h"
+ 
+ #include <cstdarg>
++#include <list>
+ #include <optional>
+ 
+ #define DEBUG_TYPE "lld"
+diff --git a/llvm/lib/Support/Unix/Process.inc b/llvm/lib/Support/Unix/Process.inc
+index 1e6cb5f26..80156ddb9 100644
+--- a/llvm/lib/Support/Unix/Process.inc
++++ b/llvm/lib/Support/Unix/Process.inc
+@@ -266,8 +266,9 @@ std::error_code Process::FixupStandardFileDescriptors() {
+ 
+ std::error_code Process::SafelyCloseFileDescriptor(int FD) {
+ #if defined(__wasi__)
+-  ::close(FD);
+-  return errnoAsErrorCode();
++  if (::close(FD) < 0)
++    return errnoAsErrorCode();
++  return std::error_code();
+ #else
+   // Create a signal set filled with *all* signals.
+   sigset_t FullSet, SavedSet;
+diff --git a/llvm/lib/Target/WebAssembly/CMakeLists.txt b/llvm/lib/Target/WebAssembly/CMakeLists.txt
+index 17df119d6..e6cf21e67 100644
+--- a/llvm/lib/Target/WebAssembly/CMakeLists.txt
++++ b/llvm/lib/Target/WebAssembly/CMakeLists.txt
+@@ -1,5 +1,23 @@
+ add_llvm_component_group(WebAssembly)
+ 
++option(LLVM_TRACECC_LEAN_WASM_O0
++  "Remove wasm backend passes unreachable under the fixed TraceCC O0 contract"
++  OFF)
++
++set(WEBASSEMBLY_OPTIONAL_OPTIMIZING_SOURCES
++  WebAssemblyDebugFixup.cpp
++  WebAssemblyLateEHPrepare.cpp
++  WebAssemblyLowerEmscriptenEHSjLj.cpp
++  WebAssemblyMemIntrinsicResults.cpp
++  WebAssemblyNullifyDebugValueLists.cpp
++  WebAssemblyOptimizeLiveIntervals.cpp
++  WebAssemblyOptimizeReturned.cpp
++  WebAssemblyPeephole.cpp
++  WebAssemblyRegColoring.cpp)
++if(LLVM_TRACECC_LEAN_WASM_O0)
++  set(WEBASSEMBLY_OPTIONAL_OPTIMIZING_SOURCES)
++endif()
++
+ set(LLVM_TARGET_DEFINITIONS WebAssembly.td)
+ 
+ tablegen(LLVM WebAssemblyGenAsmMatcher.inc -gen-asm-matcher)
+@@ -22,9 +40,7 @@ add_llvm_target(WebAssemblyCodeGen
+   WebAssemblyCFGStackify.cpp
+   WebAssemblyCleanCodeAfterTrap.cpp
+   WebAssemblyCFGSort.cpp
+-  WebAssemblyDebugFixup.cpp
+   WebAssemblyDebugValueManager.cpp
+-  WebAssemblyLateEHPrepare.cpp
+   WebAssemblyExceptionInfo.cpp
+   WebAssemblyExplicitLocals.cpp
+   WebAssemblyFastISel.cpp
+@@ -36,18 +52,12 @@ add_llvm_target(WebAssemblyCodeGen
+   WebAssemblyISelLowering.cpp
+   WebAssemblyInstrInfo.cpp
+   WebAssemblyLowerBrUnless.cpp
+-  WebAssemblyLowerEmscriptenEHSjLj.cpp
+   WebAssemblyLowerRefTypesIntPtrConv.cpp
+   WebAssemblyMachineFunctionInfo.cpp
+   WebAssemblyMCInstLower.cpp
+   WebAssemblyMCLowerPrePass.cpp
+-  WebAssemblyNullifyDebugValueLists.cpp
+-  WebAssemblyOptimizeLiveIntervals.cpp
+-  WebAssemblyOptimizeReturned.cpp
+-  WebAssemblyPeephole.cpp
+   WebAssemblyRefTypeMem2Local.cpp
+   WebAssemblyRegisterInfo.cpp
+-  WebAssemblyRegColoring.cpp
+   WebAssemblyRegNumbering.cpp
+   WebAssemblyRegStackify.cpp
+   WebAssemblyReplacePhysRegs.cpp
+@@ -55,13 +65,15 @@ add_llvm_target(WebAssemblyCodeGen
+   WebAssemblySelectionDAGInfo.cpp
+   WebAssemblySetP2AlignOperands.cpp
+   WebAssemblySortRegion.cpp
+-  WebAssemblyMemIntrinsicResults.cpp
++  ${WEBASSEMBLY_OPTIONAL_OPTIMIZING_SOURCES}
+   WebAssemblySubtarget.cpp
+   WebAssemblyTargetMachine.cpp
+   WebAssemblyTargetObjectFile.cpp
+   WebAssemblyTargetTransformInfo.cpp
+   WebAssemblyUtilities.cpp
+ 
++  PARTIAL_SOURCES_INTENDED
++
+   DEPENDS
+   intrinsics_gen
+ 
+@@ -87,6 +99,13 @@ add_llvm_target(WebAssemblyCodeGen
+   WebAssembly
+   )
+ 
++if(LLVM_TRACECC_LEAN_WASM_O0)
++  set_source_files_properties(
++    WebAssemblyTargetMachine.cpp
++    PROPERTIES
++    COMPILE_DEFINITIONS LLVM_TRACECC_LEAN_WASM_O0=1)
++endif()
++
+ add_subdirectory(AsmParser)
+ add_subdirectory(Disassembler)
+ add_subdirectory(MCTargetDesc)
+diff --git a/llvm/lib/Target/WebAssembly/WebAssemblyTargetMachine.cpp b/llvm/lib/Target/WebAssembly/WebAssemblyTargetMachine.cpp
+index 402929caa..05f1b278b 100644
+--- a/llvm/lib/Target/WebAssembly/WebAssemblyTargetMachine.cpp
++++ b/llvm/lib/Target/WebAssembly/WebAssemblyTargetMachine.cpp
+@@ -93,30 +93,44 @@ LLVMInitializeWebAssemblyTarget() {
+   // Register backend passes
+   auto &PR = *PassRegistry::getPassRegistry();
+   initializeWebAssemblyAddMissingPrototypesPass(PR);
++#ifndef LLVM_TRACECC_LEAN_WASM_O0
+   initializeWebAssemblyLowerEmscriptenEHSjLjPass(PR);
++#endif
+   initializeLowerGlobalDtorsLegacyPassPass(PR);
+   initializeFixFunctionBitcastsPass(PR);
++#ifndef LLVM_TRACECC_LEAN_WASM_O0
+   initializeOptimizeReturnedPass(PR);
++#endif
+   initializeWebAssemblyRefTypeMem2LocalPass(PR);
+   initializeWebAssemblyArgumentMovePass(PR);
+   initializeWebAssemblyAsmPrinterPass(PR);
+   initializeWebAssemblySetP2AlignOperandsPass(PR);
+   initializeWebAssemblyReplacePhysRegsPass(PR);
++#ifndef LLVM_TRACECC_LEAN_WASM_O0
+   initializeWebAssemblyOptimizeLiveIntervalsPass(PR);
+   initializeWebAssemblyMemIntrinsicResultsPass(PR);
++#endif
+   initializeWebAssemblyRegStackifyPass(PR);
++#ifndef LLVM_TRACECC_LEAN_WASM_O0
+   initializeWebAssemblyRegColoringPass(PR);
++#endif
++#ifndef LLVM_TRACECC_LEAN_WASM_O0
+   initializeWebAssemblyNullifyDebugValueListsPass(PR);
++#endif
+   initializeWebAssemblyFixIrreducibleControlFlowPass(PR);
++#ifndef LLVM_TRACECC_LEAN_WASM_O0
+   initializeWebAssemblyLateEHPreparePass(PR);
++#endif
+   initializeWebAssemblyExceptionInfoPass(PR);
+   initializeWebAssemblyCFGSortPass(PR);
+   initializeWebAssemblyCFGStackifyPass(PR);
+   initializeWebAssemblyExplicitLocalsPass(PR);
+   initializeWebAssemblyLowerBrUnlessPass(PR);
+   initializeWebAssemblyRegNumberingPass(PR);
++#ifndef LLVM_TRACECC_LEAN_WASM_O0
+   initializeWebAssemblyDebugFixupPass(PR);
+   initializeWebAssemblyPeepholePass(PR);
++#endif
+   initializeWebAssemblyMCLowerPrePassPass(PR);
+   initializeWebAssemblyLowerRefTypesIntPtrConvPass(PR);
+   initializeWebAssemblyFixBrTableDefaultsPass(PR);
+@@ -483,8 +497,10 @@ void WebAssemblyPassConfig::addIRPasses() {
+   addPass(createWebAssemblyFixFunctionBitcasts());
+ 
+   // Optimize "returned" function attributes.
++#ifndef LLVM_TRACECC_LEAN_WASM_O0
+   if (getOptLevel() != CodeGenOptLevel::None)
+     addPass(createWebAssemblyOptimizeReturned());
++#endif
+ 
+   // If exception handling is not enabled and setjmp/longjmp handling is
+   // enabled, we lower invokes into calls and delete unreachable landingpad
+@@ -503,8 +519,10 @@ void WebAssemblyPassConfig::addIRPasses() {
+   // done in WasmEHPrepare pass, Wasm SjLj preparation shares libraries and
+   // transformation algorithms with Emscripten SjLj, so we run
+   // LowerEmscriptenEHSjLj pass also when Wasm SjLj is enabled.
++#ifndef LLVM_TRACECC_LEAN_WASM_O0
+   if (WasmEnableEmEH || WasmEnableEmSjLj || WasmEnableSjLj)
+     addPass(createWebAssemblyLowerEmscriptenEHSjLj());
++#endif
+ 
+   // Expand indirectbr instructions to switches.
+   addPass(createIndirectBrExpandPass());
+@@ -588,7 +606,9 @@ void WebAssemblyPassConfig::addPreEmitPass() {
+   TargetPassConfig::addPreEmitPass();
+ 
+   // Nullify DBG_VALUE_LISTs that we cannot handle.
++#ifndef LLVM_TRACECC_LEAN_WASM_O0
+   addPass(createWebAssemblyNullifyDebugValueLists());
++#endif
+ 
+   // Eliminate multiple-entry loops.
+   if (!WasmDisableFixIrreducibleControlFlowPass)
+@@ -596,8 +616,10 @@ void WebAssemblyPassConfig::addPreEmitPass() {
+ 
+   // Do various transformations for exception handling.
+   // Every CFG-changing optimizations should come before this.
++#ifndef LLVM_TRACECC_LEAN_WASM_O0
+   if (TM->Options.ExceptionModel == ExceptionHandling::Wasm)
+     addPass(createWebAssemblyLateEHPrepare());
++#endif
+ 
+   // Now that we have a prologue and epilogue and all frame indices are
+   // rewritten, eliminate SP and FP. This allows them to be stackified,
+@@ -605,6 +627,7 @@ void WebAssemblyPassConfig::addPreEmitPass() {
+   addPass(createWebAssemblyReplacePhysRegs());
+ 
+   // Preparations and optimizations related to register stackification.
++#ifndef LLVM_TRACECC_LEAN_WASM_O0
+   if (getOptLevel() != CodeGenOptLevel::None) {
+     // Depend on LiveIntervals and perform some optimizations on it.
+     addPass(createWebAssemblyOptimizeLiveIntervals());
+@@ -612,6 +635,7 @@ void WebAssemblyPassConfig::addPreEmitPass() {
+     // Prepare memory intrinsic calls for register stackifying.
+     addPass(createWebAssemblyMemIntrinsicResults());
+   }
++#endif
+ 
+   // Mark registers as representing wasm's value stack. This is a key
+   // code-compression technique in WebAssembly. We run this pass (and
+@@ -620,12 +644,14 @@ void WebAssemblyPassConfig::addPreEmitPass() {
+   // duplication.
+   addPass(createWebAssemblyRegStackify(getOptLevel()));
+ 
++#ifndef LLVM_TRACECC_LEAN_WASM_O0
+   if (getOptLevel() != CodeGenOptLevel::None) {
+     // Run the register coloring pass to reduce the total number of registers.
+     // This runs after stackification so that it doesn't consider registers
+     // that become stackified.
+     addPass(createWebAssemblyRegColoring());
+   }
++#endif
+ 
+   // Sort the blocks of the CFG into topological order, a prerequisite for
+   // BLOCK and LOOP markers.
+@@ -642,15 +668,19 @@ void WebAssemblyPassConfig::addPreEmitPass() {
+   addPass(createWebAssemblyLowerBrUnless());
+ 
+   // Perform the very last peephole optimizations on the code.
++#ifndef LLVM_TRACECC_LEAN_WASM_O0
+   if (getOptLevel() != CodeGenOptLevel::None)
+     addPass(createWebAssemblyPeephole());
++#endif
+ 
+   // Create a mapping from LLVM CodeGen virtual registers to wasm registers.
+   addPass(createWebAssemblyRegNumbering());
+ 
+   // Fix debug_values whose defs have been stackified.
++#ifndef LLVM_TRACECC_LEAN_WASM_O0
+   if (!WasmDisableExplicitLocals)
+     addPass(createWebAssemblyDebugFixup());
++#endif
+ 
+   // Collect information to prepare for MC lowering / asm printing.
+   addPass(createWebAssemblyMCLowerPrePass());
+diff --git a/clang/lib/CodeGen/TraceCCBackendUtil.cpp b/clang/lib/CodeGen/TraceCCBackendUtil.cpp
+new file mode 100644
+index 000000000..ab511ea2b
+--- /dev/null
++++ b/clang/lib/CodeGen/TraceCCBackendUtil.cpp
+@@ -0,0 +1,312 @@
++//===--- TraceCCBackendUtil.cpp - Restricted TraceCC backend --------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// This intentionally narrow BackendUtil implementation is for the TraceCC
++// compiler worker only.  TraceKernel owns the invocation contract, so the
++// generic Clang backend's support for plugins, profile instrumentation/use,
++// sanitizers, coverage, debug information, LTO, offload objects, bitcode
++// embedding, and every output type other than an object file is unavailable.
++//
++// The O0 semantic pipeline is deliberately not empty.  LLVM requires
++// mandatory always-inline lowering, and C++ coroutines require the O0 coroutine
++// lowering sequence.  We run exactly those operations without constructing the
++// generic PassBuilder pipeline or registering its extension/plugin callbacks.
++//===----------------------------------------------------------------------===//
++
++#include "clang/CodeGen/BackendUtil.h"
++#include "BackendConsumer.h"
++#include "clang/Basic/CodeGenOptions.h"
++#include "clang/Basic/Diagnostic.h"
++#include "clang/Basic/DiagnosticFrontend.h"
++#include "clang/Basic/LangOptions.h"
++#include "clang/Basic/TargetOptions.h"
++#include "clang/Frontend/CompilerInstance.h"
++#include "llvm/ADT/StringExtras.h"
++#include "llvm/Analysis/AliasAnalysis.h"
++#include "llvm/Analysis/AssumptionCache.h"
++#include "llvm/Analysis/BasicAliasAnalysis.h"
++#include "llvm/Analysis/CGSCCPassManager.h"
++#include "llvm/Analysis/GlobalsModRef.h"
++#include "llvm/Analysis/LoopAnalysisManager.h"
++#include "llvm/Analysis/OptimizationRemarkEmitter.h"
++#include "llvm/Analysis/ProfileSummaryInfo.h"
++#include "llvm/Analysis/RuntimeLibcallInfo.h"
++#include "llvm/Analysis/ScopedNoAliasAA.h"
++#include "llvm/Analysis/TargetLibraryInfo.h"
++#include "llvm/Analysis/TargetTransformInfo.h"
++#include "llvm/Frontend/Driver/CodeGenOptions.h"
++#include "llvm/Analysis/TypeBasedAliasAnalysis.h"
++#include "llvm/IR/LegacyPassManager.h"
++#include "llvm/IR/Dominators.h"
++#include "llvm/IR/Module.h"
++#include "llvm/IR/PassManager.h"
++#include "llvm/IR/PassInstrumentation.h"
++#include "llvm/MC/TargetRegistry.h"
++#include "llvm/Support/PrettyStackTrace.h"
++#include "llvm/Support/Timer.h"
++#include "llvm/Target/TargetMachine.h"
++#include "llvm/Target/TargetOptions.h"
++#include "llvm/TargetParser/Triple.h"
++#include "llvm/Transforms/Coroutines/CoroCleanup.h"
++#include "llvm/Transforms/Coroutines/CoroConditionalWrapper.h"
++#include "llvm/Transforms/Coroutines/CoroEarly.h"
++#include "llvm/Transforms/Coroutines/CoroSplit.h"
++#include "llvm/Transforms/IPO/AlwaysInliner.h"
++#include "llvm/Transforms/IPO/GlobalDCE.h"
++
++using namespace clang;
++using namespace llvm;
++
++namespace {
++
++static bool rejectUnsupportedContract(CompilerInstance &CI, StringRef Reason) {
++  CI.getDiagnostics().Report(
++      CI.getDiagnostics().getCustomDiagID(
++          DiagnosticsEngine::Error,
++          "TraceCC lean backend only supports the fixed compiler contract: %0"))
++      << Reason;
++  return false;
++}
++
++static bool verifyTraceCCContract(CompilerInstance &CI,
++                                  const CodeGenOptions &CGOpts,
++                                  const llvm::Module &M, BackendAction Action) {
++  const llvm::Triple TargetTriple(M.getTargetTriple());
++  if (TargetTriple.getArch() != llvm::Triple::wasm32 ||
++      TargetTriple.getOS() != llvm::Triple::WASIp1)
++    return rejectUnsupportedContract(CI, "target must be wasm32-wasip1");
++  if (Action != Backend_EmitObj)
++    return rejectUnsupportedContract(CI, "output must be an object file");
++  if (CGOpts.OptimizationLevel != 0)
++    return rejectUnsupportedContract(CI, "optimization level must be -O0");
++  if (CGOpts.DisableLLVMPasses)
++    return rejectUnsupportedContract(CI, "LLVM passes may not be disabled");
++  if (CGOpts.hasProfileInstr() || CGOpts.hasProfileClangUse() ||
++      CGOpts.hasProfileIRUse() || !CGOpts.SampleProfileFile.empty() ||
++      !CGOpts.MemoryProfileUsePath.empty() ||
++      CGOpts.DebugInfoForProfiling || CGOpts.PseudoProbeForProfiling)
++    return rejectUnsupportedContract(CI, "profiles are unsupported");
++  if (!CI.getLangOpts().Sanitize.empty() || CGOpts.hasSanitizeCoverage() ||
++      CGOpts.hasSanitizeBinaryMetadata())
++    return rejectUnsupportedContract(CI, "sanitizers and coverage are unsupported");
++  if (CGOpts.XRayInstrumentFunctions || CGOpts.InstrumentForProfiling ||
++      CGOpts.CallFEntry || CGOpts.JMCInstrument)
++    return rejectUnsupportedContract(CI, "entry/exit instrumentation is unsupported");
++  if (CGOpts.getDebugInfo() != codegenoptions::NoDebugInfo)
++    return rejectUnsupportedContract(CI, "debug information is unsupported");
++  if (CGOpts.PrepareForLTO || CGOpts.PrepareForThinLTO || CGOpts.UnifiedLTO ||
++      !CGOpts.ThinLTOIndexFile.empty())
++    return rejectUnsupportedContract(CI, "LTO is unsupported");
++  if (!CGOpts.OffloadObjects.empty())
++    return rejectUnsupportedContract(CI, "offload objects are unsupported");
++  if (CGOpts.getEmbedBitcode() != CodeGenOptions::Embed_Off)
++    return rejectUnsupportedContract(CI, "embedded bitcode is unsupported");
++  if (!CI.getPassPlugins().empty())
++    return rejectUnsupportedContract(CI, "pass plugins are unsupported");
++  if (!CGOpts.PassBuilderCallbacks.empty())
++    return rejectUnsupportedContract(CI, "pass callbacks are unsupported");
++  if (CGOpts.MergeFunctions || CGOpts.VerifyModule || CGOpts.VerifyEach)
++    return rejectUnsupportedContract(CI, "optional LLVM passes are unsupported");
++  return true;
++}
++
++static std::optional<CodeModel::Model>
++getCodeModel(const CodeGenOptions &CGOpts) {
++  unsigned Model = StringSwitch<unsigned>(CGOpts.CodeModel)
++                       .Case("tiny", CodeModel::Tiny)
++                       .Case("small", CodeModel::Small)
++                       .Case("kernel", CodeModel::Kernel)
++                       .Case("medium", CodeModel::Medium)
++                       .Case("large", CodeModel::Large)
++                       .Cases({"default", ""}, ~1u)
++                       .Default(~0u);
++  assert(Model != ~0u && "invalid code model");
++  return Model == ~1u ? std::nullopt
++                       : std::optional<CodeModel::Model>(
++                             static_cast<CodeModel::Model>(Model));
++}
++
++static std::unique_ptr<TargetMachine>
++createTargetMachine(CompilerInstance &CI, llvm::Module &M) {
++  std::string Error;
++  const llvm::Triple &TargetTriple(M.getTargetTriple());
++  const llvm::Target *Target = TargetRegistry::lookupTarget(TargetTriple, Error);
++  if (!Target) {
++    CI.getDiagnostics().Report(diag::err_fe_unable_to_create_target) << Error;
++    return nullptr;
++  }
++
++  const CodeGenOptions &CGOpts = CI.getCodeGenOpts();
++  const clang::TargetOptions &TargetOpts = CI.getTargetOpts();
++  llvm::TargetOptions Options;
++  Options.ThreadModel = CI.getLangOpts().getThreadModel() ==
++                                LangOptions::ThreadModelKind::POSIX
++                            ? ThreadModel::POSIX
++                            : ThreadModel::Single;
++  Options.EmulatedTLS = CGOpts.EmulatedTLS;
++  Options.UseInitArray = CGOpts.UseInitArray;
++  Options.DisableIntegratedAS = CGOpts.DisableIntegratedAS;
++  Options.NoInfsFPMath = CI.getLangOpts().NoHonorInfs;
++  Options.NoNaNsFPMath = CI.getLangOpts().NoHonorNaNs;
++  Options.MCOptions.ABIName = TargetOpts.ABI;
++  if (CGOpts.hasWasmExceptions())
++    Options.ExceptionModel = ExceptionHandling::Wasm;
++
++  StringRef FloatABIName = CGOpts.FloatABI;
++  Options.FloatABIType = StringSwitch<llvm::FloatABI::ABIType>(FloatABIName)
++                             .Case("soft", llvm::FloatABI::Soft)
++                             .Case("softfp", llvm::FloatABI::Soft)
++                             .Case("hard", llvm::FloatABI::Hard)
++                             .Default(llvm::FloatABI::Default);
++  std::string Features = join(TargetOpts.Features, ",");
++  auto TM = std::unique_ptr<TargetMachine>(Target->createTargetMachine(
++      TargetTriple, TargetOpts.CPU, Features, Options, CGOpts.RelocationModel,
++      getCodeModel(CGOpts), CodeGenOptLevel::None));
++  if (TM)
++    TM->setLargeDataThreshold(CGOpts.LargeDataThreshold);
++  return TM;
++}
++
++static void registerLeanAnalyses(TargetMachine &TM,
++                                 TargetLibraryInfoImpl &TLII,
++                                 LoopAnalysisManager &LAM,
++                                 FunctionAnalysisManager &FAM,
++                                 CGSCCAnalysisManager &CGAM,
++                                 ModuleAnalysisManager &MAM) {
++  // These are the exact analyses consumed by the mandatory O0 and coroutine
++  // passes.  Keeping this list explicit prevents the generic PassBuilder
++  // registry from making every optional optimizer feature reachable.
++  MAM.registerPass([] { return ProfileSummaryAnalysis(); });
++  MAM.registerPass([] { return LazyCallGraphAnalysis(); });
++  MAM.registerPass([] { return GlobalsAA(); });
++  MAM.registerPass([] { return PassInstrumentationAnalysis(); });
++  CGAM.registerPass([] { return PassInstrumentationAnalysis(); });
++  FAM.registerPass([] { return PassInstrumentationAnalysis(); });
++  LAM.registerPass([] { return PassInstrumentationAnalysis(); });
++  FAM.registerPass([] { return AssumptionAnalysis(); });
++  FAM.registerPass([] { return BasicAA(); });
++  FAM.registerPass([] { return DominatorTreeAnalysis(); });
++  FAM.registerPass([] { return OptimizationRemarkEmitterAnalysis(); });
++  FAM.registerPass([] { return ScopedNoAliasAA(); });
++  FAM.registerPass([&TLII] { return TargetLibraryAnalysis(TLII); });
++  FAM.registerPass([&TM] { return TM.getTargetIRAnalysis(); });
++  FAM.registerPass([] { return TypeBasedAA(); });
++  FAM.registerPass([] {
++    AAManager AA;
++    AA.registerFunctionAnalysis<BasicAA>();
++    AA.registerFunctionAnalysis<ScopedNoAliasAA>();
++    AA.registerFunctionAnalysis<TypeBasedAA>();
++    AA.registerModuleAnalysis<GlobalsAA>();
++    return AA;
++  });
++
++  MAM.registerPass([&FAM] { return FunctionAnalysisManagerModuleProxy(FAM); });
++  MAM.registerPass([&CGAM] { return CGSCCAnalysisManagerModuleProxy(CGAM); });
++  CGAM.registerPass([&MAM] { return ModuleAnalysisManagerCGSCCProxy(MAM); });
++  CGAM.registerPass([] { return FunctionAnalysisManagerCGSCCProxy(); });
++  FAM.registerPass([&CGAM] { return CGSCCAnalysisManagerFunctionProxy(CGAM); });
++  FAM.registerPass([&MAM] { return ModuleAnalysisManagerFunctionProxy(MAM); });
++  FAM.registerPass([&LAM] { return LoopAnalysisManagerFunctionProxy(LAM); });
++  LAM.registerPass([&FAM] { return FunctionAnalysisManagerLoopProxy(FAM); });
++}
++
++static void runMandatoryO0Pipeline(llvm::Module &M, TargetMachine &TM) {
++  std::unique_ptr<TargetLibraryInfoImpl> TLII(
++      llvm::driver::createTLII(M.getTargetTriple(),
++                              llvm::driver::VectorLibrary::NoLibrary));
++  LoopAnalysisManager LAM;
++  FunctionAnalysisManager FAM;
++  CGSCCAnalysisManager CGAM;
++  ModuleAnalysisManager MAM;
++  registerLeanAnalyses(TM, *TLII, LAM, FAM, CGAM, MAM);
++
++  ModulePassManager MPM;
++  MPM.addPass(AlwaysInlinerPass(/*InsertLifetimeIntrinsics=*/false));
++  // Preserve the exact O0 CoroConditionalWrapper boundary from LLVM's default
++  // pipeline.  Besides avoiding work for the overwhelmingly common
++  // non-coroutine translation unit, the wrapper's analysis-preservation
++  // contract is part of the pipeline semantics.
++  ModulePassManager CoroPM;
++  CoroPM.addPass(CoroEarlyPass());
++  CGSCCPassManager CGPM;
++  CGPM.addPass(CoroSplitPass(/*OptimizeFrame=*/false));
++  CoroPM.addPass(createModuleToPostOrderCGSCCPassAdaptor(std::move(CGPM)));
++  CoroPM.addPass(CoroCleanupPass());
++  CoroPM.addPass(GlobalDCEPass());
++  MPM.addPass(CoroConditionalWrapper(std::move(CoroPM)));
++  // The upstream O0 pipeline also contains EntryExitInstrumenter, AllocToken,
++  // and annotation-remark hooks.  The fixed contract rejects every option
++  // that makes EntryExitInstrumenter observable; it does not enable alloc
++  // token lowering or annotation remarks.  Omitting those no-op hooks keeps
++  // their instrumentation/remarks closure out of this worker.
++  MPM.run(M, MAM);
++}
++
++static void runCodegen(CompilerInstance &CI, llvm::Module &M, TargetMachine &TM,
++                       raw_pwrite_stream &OS) {
++  legacy::PassManager PM;
++  PM.add(createTargetTransformInfoWrapperPass(TM.getTargetIRAnalysis()));
++  std::unique_ptr<TargetLibraryInfoImpl> TLII(llvm::driver::createTLII(
++      M.getTargetTriple(), CI.getCodeGenOpts().getVecLib()));
++  PM.add(new TargetLibraryInfoWrapperPass(*TLII));
++  const llvm::TargetOptions &Options = TM.Options;
++  PM.add(new RuntimeLibraryInfoWrapper(
++      M.getTargetTriple(), Options.ExceptionModel, Options.FloatABIType,
++      Options.EABIVersion, Options.MCOptions.ABIName, Options.VecLib));
++  if (TM.addPassesToEmitFile(PM, OS, nullptr, CodeGenFileType::ObjectFile,
++                             /*DisableVerify=*/true)) {
++    CI.getDiagnostics().Report(diag::err_fe_unable_to_interface_with_target);
++    return;
++  }
++  PrettyStackTraceString CrashInfo("TraceCC lean code generation");
++  PM.run(M);
++}
++
++} // namespace
++
++void clang::emitBackendOutput(CompilerInstance &CI, CodeGenOptions &CGOpts,
++                              StringRef TDesc, llvm::Module *M,
++                              BackendAction Action,
++                              IntrusiveRefCntPtr<vfs::FileSystem> VFS,
++                              std::unique_ptr<raw_pwrite_stream> OS,
++                              BackendConsumer *BC) {
++  (void)VFS;
++  (void)BC;
++  if (!verifyTraceCCContract(CI, CGOpts, *M, Action))
++    return;
++  std::unique_ptr<TargetMachine> TM = createTargetMachine(CI, *M);
++  if (!TM)
++    return;
++  M->setDataLayout(TM->createDataLayout());
++  if (M->getDataLayout().getStringRepresentation() != TDesc) {
++    CI.getDiagnostics().Report(diag::err_data_layout_mismatch)
++        << M->getDataLayout().getStringRepresentation() << TDesc;
++    return;
++  }
++  runMandatoryO0Pipeline(*M, *TM);
++  runCodegen(CI, *M, *TM, *OS);
++}
++
++void clang::EmbedBitcode(llvm::Module *M, const CodeGenOptions &CGOpts,
++                         MemoryBufferRef Buf) {
++  (void)M;
++  (void)CGOpts;
++  (void)Buf;
++  // The TraceCC contract rejects embed-bitcode in emitBackendOutput.  This
++  // no-op exists because CodeGenAction calls the hook before backend dispatch.
++}
++
++void clang::EmbedObject(llvm::Module *M, const CodeGenOptions &CGOpts,
++                        vfs::FileSystem &VFS, DiagnosticsEngine &Diags) {
++  (void)M;
++  (void)CGOpts;
++  (void)VFS;
++  (void)Diags;
++  // Same ordering caveat as EmbedBitcode: offload objects are rejected by the
++  // fixed contract before code generation, and never embedded by TraceCC.
++}
+diff --git a/clang/tools/driver/tracecc1-clean/CMakeLists.txt b/clang/tools/driver/tracecc1-clean/CMakeLists.txt
+new file mode 100644
+index 000000000..a6aec6bfe
+--- /dev/null
++++ b/clang/tools/driver/tracecc1-clean/CMakeLists.txt
+@@ -0,0 +1,125 @@
++set(LLVM_LINK_COMPONENTS
++  ${LLVM_TARGETS_TO_BUILD}
++  Analysis
++  CodeGen
++  Core
++  IPO
++  AggressiveInstCombine
++  InstCombine
++  Instrumentation
++  MC
++  MCParser
++  ObjCARCOpts
++  Option
++  ScalarOpts
++  Support
++  TargetParser
++  TransformUtils
++  Vectorize
++  )
++
++# Experimental upstream cc1 entrypoint. This retains Clang's complete frontend
++# invocation semantics while omitting the GCC-compatible driver, LLD, and LLVM
++# utility dispatcher from the executable.
++add_clang_tool(tracecc1-clean
++  tracecc1_clean_main.cpp
++  tracecc_execute_compiler_invocation.cpp
++  ../cc1_main.cpp
++
++  PARTIAL_SOURCES_INTENDED
++
++  DEPENDS
++  intrinsics_gen
++  target_parser_gen
++  )
++
++clang_target_link_libraries(tracecc1-clean
++  PRIVATE
++  clangBasic
++  clangCodeGen
++  clangFrontend
++  clangOptions
++  clangSerialization
++  )
++
++add_dependencies(tracecc1-clean clang-resource-headers)
++
++# Experimental TraceKernel-facing tool: direct cc1 plus Wasm-only LLD in one
++# module so their shared LLVM backend is not downloaded and compiled twice.
++add_clang_tool(tracecc-clean
++  tracecc_clean_main.cpp
++  tracecc_execute_compiler_invocation.cpp
++  ../cc1_main.cpp
++
++  PARTIAL_SOURCES_INTENDED
++
++  DEPENDS
++  intrinsics_gen
++  target_parser_gen
++  )
++
++clang_target_link_libraries(tracecc-clean
++  PRIVATE
++  clangBasic
++  clangCodeGen
++  clangFrontend
++  clangOptions
++  clangSerialization
++  )
++
++target_link_libraries(tracecc-clean
++  PRIVATE
++  lldCommon
++  lldWasm
++  )
++
++target_include_directories(tracecc-clean
++  PRIVATE
++  ${CMAKE_SOURCE_DIR}/../lld/include
++  )
++
++add_dependencies(tracecc-clean clang-resource-headers)
++
++# Experimental re-entrant TraceKernel-facing tool. Unlike tracecc-clean this
++# uses WASI's reactor execution model, returns from every command, and asks LLD
++# to destroy its per-link context. The host owns the argv storage and invokes
++# the exported tracecc_run() function directly.
++add_clang_tool(tracecc-reactor
++  tracecc_reactor.cpp
++  tracecc_fixed_frontend.cpp
++
++  PARTIAL_SOURCES_INTENDED
++
++  DEPENDS
++  intrinsics_gen
++  target_parser_gen
++  )
++
++clang_target_link_libraries(tracecc-reactor
++  PRIVATE
++  clangBasic
++  clangCodeGen
++  clangFrontend
++  clangOptions
++  clangSerialization
++  )
++
++target_link_libraries(tracecc-reactor
++  PRIVATE
++  lldCommon
++  lldWasm
++  )
++
++target_include_directories(tracecc-reactor
++  PRIVATE
++  ${CMAKE_SOURCE_DIR}/../lld/include
++  )
++
++target_link_options(tracecc-reactor
++  PRIVATE
++  -mexec-model=reactor
++  -Wl,--Map=/tmp/tracecc-reactor-fulllto.map
++  -Wl,--why-extract=/tmp/tracecc-reactor-fulllto-why-extract.txt
++  )
++
++add_dependencies(tracecc-reactor clang-resource-headers)
+diff --git a/clang/tools/driver/tracecc1-clean/tracecc1_clean_main.cpp b/clang/tools/driver/tracecc1-clean/tracecc1_clean_main.cpp
+new file mode 100644
+index 000000000..046c96ffa
+--- /dev/null
++++ b/clang/tools/driver/tracecc1-clean/tracecc1_clean_main.cpp
+@@ -0,0 +1,29 @@
++//===-- tracecc1_clean_main.cpp - Direct upstream Clang frontend ----------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// Experimental direct entrypoint for measuring a general Clang frontend
++// without the GCC-compatible driver, linker, or unrelated LLVM utilities.
++// The caller supplies the ordinary cc1 argument vector, including "-cc1".
++//
++//===----------------------------------------------------------------------===//
++
++#include "llvm/ADT/ArrayRef.h"
++#include "llvm/ADT/SmallVector.h"
++
++#include <cstdint>
++
++extern int cc1_main(llvm::ArrayRef<const char *> Argv, const char *Argv0,
++                    void *MainAddr);
++
++int main(int Argc, char **Argv) {
++  llvm::SmallVector<const char *, 64> Arguments;
++  Arguments.append(Argv + 1, Argv + Argc);
++  void *MainAddr = reinterpret_cast<void *>(
++      static_cast<intptr_t>(reinterpret_cast<intptr_t>(&main)));
++  return cc1_main(Arguments, Argv[0], MainAddr);
++}
+diff --git a/clang/tools/driver/tracecc1-clean/tracecc_clean_main.cpp b/clang/tools/driver/tracecc1-clean/tracecc_clean_main.cpp
+new file mode 100644
+index 000000000..47bee03c8
+--- /dev/null
++++ b/clang/tools/driver/tracecc1-clean/tracecc_clean_main.cpp
+@@ -0,0 +1,50 @@
++//===-- tracecc_clean_main.cpp - Narrow TraceCC tool dispatcher -----------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// Experimental TraceKernel-facing entrypoint. It retains only the complete
++// Clang cc1 frontend and LLD's WebAssembly driver. The host supplies normalized
++// commands, so no GCC-compatible driver or unrelated linker flavors are kept.
++//
++//===----------------------------------------------------------------------===//
++
++#include "lld/Common/Driver.h"
++#include "llvm/ADT/ArrayRef.h"
++#include "llvm/ADT/SmallVector.h"
++#include "llvm/ADT/StringRef.h"
++#include "llvm/Support/raw_ostream.h"
++
++#include <cstdint>
++
++extern int cc1_main(llvm::ArrayRef<const char *> Argv, const char *Argv0,
++                    void *MainAddr);
++
++namespace lld {
++extern int unsafeLldMain(llvm::ArrayRef<const char *> args,
++                         llvm::raw_ostream &stdoutOS,
++                         llvm::raw_ostream &stderrOS,
++                         llvm::ArrayRef<DriverDef> drivers, bool exitEarly);
++}
++
++LLD_HAS_DRIVER(wasm)
++
++int main(int Argc, char **Argv) {
++  llvm::StringRef Program(Argv[0]);
++  if (Program.ends_with("wasm-ld") || Program.ends_with("tracewasmld")) {
++    const lld::DriverDef WasmDriver = {lld::Wasm, &lld::wasm::link};
++    return lld::unsafeLldMain(
++        llvm::ArrayRef<const char *>(Argv, Argv + Argc), llvm::outs(),
++        llvm::errs(), llvm::ArrayRef<lld::DriverDef>(&WasmDriver, 1),
++        /*exitEarly=*/true);
++  }
++
++  llvm::SmallVector<const char *, 64> Arguments;
++  Arguments.append(Argv + 1, Argv + Argc);
++  void *MainAddr = reinterpret_cast<void *>(
++      static_cast<intptr_t>(reinterpret_cast<intptr_t>(&main)));
++  return cc1_main(Arguments, Argv[0], MainAddr);
++}
+diff --git a/clang/tools/driver/tracecc1-clean/tracecc_execute_compiler_invocation.cpp b/clang/tools/driver/tracecc1-clean/tracecc_execute_compiler_invocation.cpp
+new file mode 100644
+index 000000000..04c9ad7b5
+--- /dev/null
++++ b/clang/tools/driver/tracecc1-clean/tracecc_execute_compiler_invocation.cpp
+@@ -0,0 +1,79 @@
++//===-- tracecc_execute_compiler_invocation.cpp --------------------------===//
++//
++// Experimental TraceCC-owned frontend action dispatcher. This deliberately
++// keeps the ordinary C/C++ compile, preprocess, syntax-check, module, and PCH
++// actions while excluding Clang's IDE, source-rewrite, ExtractAPI, plugin, and
++// static-analyzer action graph from the browser compiler executable.
++//
++//===----------------------------------------------------------------------===//
++
++#include "clang/Basic/DiagnosticFrontend.h"
++#include "clang/CodeGen/CodeGenAction.h"
++#include "clang/Frontend/CompilerInstance.h"
++#include "clang/Frontend/FrontendActions.h"
++#include "clang/FrontendTool/Utils.h"
++#include "llvm/Support/BuryPointer.h"
++
++#include <memory>
++
++using namespace clang;
++
++namespace {
++
++std::unique_ptr<FrontendAction>
++createTraceCCFrontendAction(CompilerInstance &CI) {
++  using namespace clang::frontend;
++
++  switch (CI.getFrontendOpts().ProgramAction) {
++  case EmitAssembly:
++    return std::make_unique<EmitAssemblyAction>();
++  case EmitBC:
++    return std::make_unique<EmitBCAction>();
++  case EmitLLVM:
++    return std::make_unique<EmitLLVMAction>();
++  case EmitLLVMOnly:
++    return std::make_unique<EmitLLVMOnlyAction>();
++  case EmitCodeGenOnly:
++    return std::make_unique<EmitCodeGenOnlyAction>();
++  case EmitObj:
++    return std::make_unique<EmitObjAction>();
++  case GenerateModule:
++    return std::make_unique<GenerateModuleFromModuleMapAction>();
++  case GenerateModuleInterface:
++    return std::make_unique<GenerateModuleInterfaceAction>();
++  case GenerateReducedModuleInterface:
++    return std::make_unique<GenerateReducedModuleInterfaceAction>();
++  case GenerateHeaderUnit:
++    return std::make_unique<GenerateHeaderUnitAction>();
++  case GeneratePCH:
++    return std::make_unique<GeneratePCHAction>();
++  case InitOnly:
++    return std::make_unique<InitOnlyAction>();
++  case ParseSyntaxOnly:
++    return std::make_unique<SyntaxOnlyAction>();
++  case PrintPreprocessedInput:
++    return std::make_unique<PrintPreprocessedAction>();
++  case RunPreprocessorOnly:
++    return std::make_unique<PreprocessOnlyAction>();
++  case VerifyPCH:
++    return std::make_unique<VerifyPCHAction>();
++  default:
++    CI.getDiagnostics().Report(diag::err_fe_action_not_available)
++        << "TraceCC frontend action";
++    return nullptr;
++  }
++}
++
++} // namespace
++
++bool clang::ExecuteCompilerInvocation(CompilerInstance *Clang) {
++  std::unique_ptr<FrontendAction> Action =
++      createTraceCCFrontendAction(*Clang);
++  if (!Action)
++    return false;
++
++  const bool Success = Clang->ExecuteAction(*Action);
++  if (Clang->getFrontendOpts().DisableFree)
++    llvm::BuryPointer(std::move(Action));
++  return Success;
++}
+diff --git a/clang/tools/driver/tracecc1-clean/tracecc_fixed_frontend.cpp b/clang/tools/driver/tracecc1-clean/tracecc_fixed_frontend.cpp
+new file mode 100644
+index 000000000..bd8dcd490
+--- /dev/null
++++ b/clang/tools/driver/tracecc1-clean/tracecc_fixed_frontend.cpp
+@@ -0,0 +1,160 @@
++//===-- tracecc_fixed_frontend.cpp - Fixed TraceCC frontend --------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// Experimental TraceKernel-facing C/C++ frontend. The host selects one of two
++// fixed programs:
++//
++//   tracecc-cxx <source> <object> <sysroot> [pch]
++//   tracecc-c   <source> <object> <sysroot> [pch]
++//
++// The target, language standard, frontend action, and code-generation policy
++// are deliberately not representable as runtime arguments.
++//
++//===----------------------------------------------------------------------===//
++
++#include "clang/Basic/CodeGenOptions.h"
++#include "clang/Basic/DiagnosticOptions.h"
++#include "clang/Basic/LangOptions.h"
++#include "clang/Basic/LangStandard.h"
++#include "clang/Basic/TargetOptions.h"
++#include "clang/CodeGen/CodeGenAction.h"
++#include "clang/Frontend/CompilerInstance.h"
++#include "clang/Frontend/CompilerInvocation.h"
++#include "clang/Frontend/FrontendOptions.h"
++#include "clang/Lex/HeaderSearchOptions.h"
++#include "clang/Lex/PreprocessorOptions.h"
++#include "llvm/ADT/StringRef.h"
++#include "llvm/IR/DebugInfoMetadata.h"
++#include "llvm/Support/Path.h"
++#include "llvm/Support/VirtualFileSystem.h"
++#include "llvm/TargetParser/Triple.h"
++
++#include <memory>
++#include <string>
++
++using namespace clang;
++
++namespace {
++
++void addSystemPath(HeaderSearchOptions &HeaderSearch, const std::string &Path) {
++  HeaderSearch.AddPath(Path, frontend::System, /*IsFramework=*/false,
++                       /*IgnoreSysRoot=*/true);
++}
++
++std::shared_ptr<CompilerInvocation>
++createInvocation(Language LanguageKind, llvm::StringRef SourcePath,
++                 llvm::StringRef OutputPath, llvm::StringRef Sysroot,
++                 llvm::StringRef PCHPath) {
++  auto Invocation = std::make_shared<CompilerInvocation>();
++  const llvm::Triple Triple("wasm32-unknown-wasip1");
++
++  PreprocessorOptions &Preprocessor = Invocation->getPreprocessorOpts();
++  LangOptions &Lang = Invocation->getLangOpts();
++  const LangStandard::Kind Standard =
++      LanguageKind == Language::CXX ? LangStandard::lang_cxx23
++                                    : LangStandard::lang_c17;
++  LangOptions::setLangDefaults(Lang, LanguageKind, Triple,
++                               Preprocessor.Includes, Standard);
++
++  TargetOptions &Target = Invocation->getTargetOpts();
++  Target.Triple = Triple.str();
++  Target.CPU = "generic";
++
++  if (LanguageKind == Language::CXX) {
++    Lang.Coroutines = true;
++    Lang.CPlusPlusModules = true;
++    Lang.Modules = true;
++    Lang.ModulesLocalVisibility = true;
++    Lang.CXXOperatorNames = true;
++    Lang.GNUKeywords = Lang.GNUMode;
++    Lang.MathErrno = false;
++    Lang.SizedDeallocation = true;
++    Lang.AlignedAllocation = true;
++    Lang.RTTI = true;
++    Lang.RTTIData = true;
++    Lang.Char8 = true;
++    Lang.WChar = true;
++    Lang.WCharIsSigned = true;
++    Lang.setComplexRange(LangOptions::CX_Full);
++  }
++  Lang.GNUCVersion = 4 * 100 * 100 + 2 * 100 + 1;
++  Lang.ImplicitModules = false;
++  Lang.SkipODRCheckInGMF = true;
++  Lang.Deprecated = true;
++  Lang.ConvergentFunctions = false;
++  Lang.setValueVisibilityMode(HiddenVisibility);
++  Lang.setTypeVisibilityMode(HiddenVisibility);
++  Lang.setDefaultFPContractMode(LangOptions::FPM_On);
++
++  HeaderSearchOptions &HeaderSearch = Invocation->getHeaderSearchOpts();
++  HeaderSearch.Sysroot = Sysroot.str();
++  HeaderSearch.ResourceDir = Sysroot.str();
++  if (LanguageKind == Language::CXX) {
++    addSystemPath(HeaderSearch,
++                  (Sysroot + "/include/wasm32-wasip1/c++/v1").str());
++    addSystemPath(HeaderSearch, (Sysroot + "/include/c++/v1").str());
++  }
++  addSystemPath(HeaderSearch, (Sysroot + "/include").str());
++  addSystemPath(HeaderSearch,
++                (Sysroot + "/include/wasm32-wasip1").str());
++  addSystemPath(HeaderSearch, (Sysroot + "/include").str());
++
++  if (!PCHPath.empty())
++    Preprocessor.ImplicitPCHInclude = PCHPath.str();
++
++  FrontendOptions &Frontend = Invocation->getFrontendOpts();
++  const InputKind Input(LanguageKind);
++  Frontend.DashX = Input;
++  Frontend.Inputs.emplace_back(SourcePath, Input);
++  Frontend.OutputFile = OutputPath.str();
++  Frontend.ProgramAction = frontend::EmitObj;
++  Frontend.DisableFree = false;
++
++  CodeGenOptions &CodeGen = Invocation->getCodeGenOpts();
++  CodeGen.OptimizationLevel = 0;
++  CodeGen.RelocationModel = llvm::Reloc::Static;
++  CodeGen.setFramePointer(CodeGenOptions::FramePointerKind::None);
++  CodeGen.setInlining(CodeGenOptions::OnlyAlwaysInlining);
++  CodeGen.setDebuggerTuning(llvm::DebuggerKind::GDB);
++  CodeGen.ClearASTBeforeBackend = true;
++  CodeGen.DiscardValueNames = true;
++  CodeGen.DirectAccessExternalData = true;
++  CodeGen.MergeAllConstants = false;
++  CodeGen.DebugNameTable =
++      static_cast<unsigned>(llvm::DICompileUnit::DebugNameTableKind::None);
++  CodeGen.XRayInstrumentationBundle.Mask = XRayInstrKind::All;
++  CodeGen.VerifyModule = false;
++  CodeGen.VerifyEach = false;
++  CodeGen.CXXCtorDtorAliases = true;
++  CodeGen.MainFileName = llvm::sys::path::filename(SourcePath).str();
++  CodeGen.DebugCompilationDir = "/";
++  CodeGen.CoverageCompilationDir = "/";
++
++  Invocation->getDiagnosticOpts().ErrorLimit = 19;
++  return Invocation;
++}
++
++} // namespace
++
++int traceccFixedFrontendMain(bool IsCXX, int Argc,
++                             const char *const *Argv) {
++  if ((Argc != 4 && Argc != 5) || Argv == nullptr)
++    return 64;
++
++  auto Invocation =
++      createInvocation(IsCXX ? Language::CXX : Language::C, Argv[1], Argv[2],
++                       Argv[3], Argc == 5 ? Argv[4] : "");
++  CompilerInstance Compiler(std::move(Invocation));
++  Compiler.setVirtualFileSystem(llvm::vfs::getRealFileSystem());
++  Compiler.createDiagnostics();
++  if (!Compiler.hasDiagnostics())
++    return 70;
++
++  EmitObjAction Action;
++  return Compiler.ExecuteAction(Action) ? 0 : 1;
++}
+diff --git a/clang/tools/driver/tracecc1-clean/tracecc_reactor.cpp b/clang/tools/driver/tracecc1-clean/tracecc_reactor.cpp
+new file mode 100644
+index 000000000..2f3aac78f
+--- /dev/null
++++ b/clang/tools/driver/tracecc1-clean/tracecc_reactor.cpp
+@@ -0,0 +1,168 @@
++//===-- tracecc_reactor.cpp - Re-entrant TraceCC tool dispatcher ---------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// Experimental TraceKernel-facing reactor entrypoint. The host initializes
++// the WASI reactor once and invokes tracecc_run() repeatedly with normalized
++// cc1 or Wasm LLD argument vectors. Each invocation owns and destroys its
++// frontend/linker state; the WebAssembly instance and libc allocator remain
++// warm and reuse their high-water memory.
++//
++//===----------------------------------------------------------------------===//
++
++#include "lld/Common/Driver.h"
++#include "llvm/ADT/ArrayRef.h"
++#include "llvm/ADT/StringRef.h"
++#include "llvm/Support/TargetSelect.h"
++#include "llvm/Support/raw_ostream.h"
++
++#include <cstdint>
++#include <cstdlib>
++
++#if defined(__LLVM_INSTR_PROFILE_GENERATE)
++#include <cstdio>
++#include <cstring>
++#endif
++
++extern int traceccFixedFrontendMain(bool IsCXX, int Argc,
++                                    const char *const *Argv);
++
++LLD_HAS_DRIVER(wasm)
++
++namespace {
++
++bool CanRunAgain = true;
++
++bool isWasmLinker(llvm::StringRef Program) {
++  return Program.ends_with("wasm-ld") || Program.ends_with("tracewasmld");
++}
++
++void initializeFrontendTarget() {
++  static const bool Initialized = [] {
++    LLVMInitializeWebAssemblyTargetInfo();
++    LLVMInitializeWebAssemblyTarget();
++    LLVMInitializeWebAssemblyTargetMC();
++    LLVMInitializeWebAssemblyAsmPrinter();
++    LLVMInitializeWebAssemblyAsmParser();
++    return true;
++  }();
++  (void)Initialized;
++}
++
++} // namespace
++
++extern "C" {
++
++__attribute__((export_name("tracecc_alloc"))) void *
++tracecc_alloc(uint32_t Size) {
++  return std::malloc(Size);
++}
++
++__attribute__((export_name("tracecc_free"))) void tracecc_free(void *Pointer) {
++  std::free(Pointer);
++}
++
++__attribute__((export_name("tracecc_can_run_again"))) int
++tracecc_can_run_again() {
++  return CanRunAgain ? 1 : 0;
++}
++
++__attribute__((export_name("tracecc_run"))) int
++tracecc_run(int Argc, const char *const *Argv) {
++  CanRunAgain = true;
++  if (Argc <= 0 || Argv == nullptr || Argv[0] == nullptr)
++    return 64;
++
++  llvm::StringRef Program(Argv[0]);
++  if (isWasmLinker(Program)) {
++    const lld::DriverDef WasmDriver = {lld::Wasm, &lld::wasm::link};
++    const lld::Result Result = lld::lldMain(
++        llvm::ArrayRef<const char *>(Argv, Argv + Argc), llvm::outs(),
++        llvm::errs(), llvm::ArrayRef<lld::DriverDef>(&WasmDriver, 1));
++    CanRunAgain = Result.canRunAgain;
++    return Result.canRunAgain ? Result.retCode : 70;
++  }
++
++  if (Program == "tracecc-cxx" || Program.ends_with("/tracecc-cxx")) {
++    initializeFrontendTarget();
++    return traceccFixedFrontendMain(/*IsCXX=*/true, Argc, Argv);
++  }
++  if (Program == "tracecc-c" || Program.ends_with("/tracecc-c")) {
++    initializeFrontendTarget();
++    return traceccFixedFrontendMain(/*IsCXX=*/false, Argc, Argv);
++  }
++  return 64;
++}
++
++#if defined(__LLVM_INSTR_PROFILE_GENERATE)
++
++int __llvm_profile_write_file(void);
++void __llvm_profile_set_filename(const char *Filename);
++
++__attribute__((export_name("tracecc_profile_write"))) int
++tracecc_profile_write(const char *Filename) {
++  if (Filename == nullptr)
++    return 64;
++  __llvm_profile_set_filename(Filename);
++  return __llvm_profile_write_file();
++}
++
++// Training-only driver for persistent, cross-host profile collection. A
++// Wasmtime process invokes this once, compiles every virtual path in the
++// mounted newline-delimited manifest, writes one aggregate profile, and exits.
++// It is absent from non-instrumented production builds.
++__attribute__((export_name("tracecc_train_manifest"))) int
++tracecc_train_manifest(uint32_t ShardIndex) {
++  std::FILE *Manifest = std::fopen("/training/manifest.txt", "r");
++  if (Manifest == nullptr)
++    return 66;
++
++  char SourcePath[4096];
++  uint32_t Completed = 0;
++  uint32_t Failed = 0;
++  while (std::fgets(SourcePath, sizeof(SourcePath), Manifest) != nullptr) {
++    const size_t Length = std::strlen(SourcePath);
++    if (Length == 0)
++      continue;
++    if (SourcePath[Length - 1] != '\n' && !std::feof(Manifest)) {
++      std::fclose(Manifest);
++      return 65;
++    }
++    SourcePath[std::strcspn(SourcePath, "\r\n")] = '\0';
++    if (SourcePath[0] == '\0')
++      continue;
++
++    const char *Args[] = {
++        "tracecc-cxx",
++        SourcePath,
++        "/workspace/train.o",
++        "/usr",
++        "/assets/tracecode_pch-codegen-common-event-helpers-v2.hpp.pch",
++    };
++    if (tracecc_run(5, Args) != 0)
++      ++Failed;
++    ++Completed;
++    if (Completed % 25 == 0)
++      std::fprintf(stderr, "tracecc-pgo shard=%u completed=%u failed=%u\n",
++                   ShardIndex, Completed, Failed);
++  }
++  std::fclose(Manifest);
++
++  char ProfilePath[128];
++  std::snprintf(ProfilePath, sizeof(ProfilePath),
++                "/profiles/tracecc-fixed-shard-%u.profraw", ShardIndex);
++  if (tracecc_profile_write(ProfilePath) != 0)
++    return 74;
++  std::fprintf(stderr,
++               "tracecc-pgo shard=%u complete=%u failed=%u profile=%s\n",
++               ShardIndex, Completed, Failed, ProfilePath);
++  return Failed == 0 ? 0 : 1;
++}
++
++#endif
++
++} // extern "C"
+diff --git a/lld/tools/lld/tracewasmld.cpp b/lld/tools/lld/tracewasmld.cpp
+new file mode 100644
+index 000000000..59e23fbbe
+--- /dev/null
++++ b/lld/tools/lld/tracewasmld.cpp
+@@ -0,0 +1,34 @@
++//===- tracewasmld.cpp - TraceCC WebAssembly-only linker ------------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// Experimental entrypoint for measuring LLD with only its WebAssembly driver.
++// The ordinary multi-flavor lld executable also retains ELF, COFF, Mach-O,
++// and MinGW dispatchers that TraceCC cannot use.
++//
++//===----------------------------------------------------------------------===//
++
++#include "lld/Common/Driver.h"
++#include "llvm/ADT/ArrayRef.h"
++#include "llvm/Support/raw_ostream.h"
++
++namespace lld {
++extern int unsafeLldMain(llvm::ArrayRef<const char *> args,
++                         llvm::raw_ostream &stdoutOS,
++                         llvm::raw_ostream &stderrOS,
++                         llvm::ArrayRef<DriverDef> drivers, bool exitEarly);
++}
++
++LLD_HAS_DRIVER(wasm)
++
++int main(int argc, char **argv) {
++  const lld::DriverDef wasmDriver = {lld::Wasm, &lld::wasm::link};
++  return lld::unsafeLldMain(
++      llvm::ArrayRef<const char *>(argv, argv + argc), llvm::outs(),
++      llvm::errs(), llvm::ArrayRef<lld::DriverDef>(&wasmDriver, 1),
++      /*exitEarly=*/true);
++}
