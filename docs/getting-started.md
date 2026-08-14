@@ -51,8 +51,11 @@ const request: TraceCCCompileRequest = {
 
   // Optional:
   pchPath: "/toolchain/profile.pch",
-  runtimeObjects: ["/toolchain/runtime.o"],
-  librarySearchPaths: ["/toolchain/lib"],
+  runtimeObjects: [
+    "/toolchain/sysroot/lib/wasm32-wasip1/crt1-command.o",
+    "/toolchain/runtime.o",
+  ],
+  librarySearchPaths: ["/toolchain/sysroot/lib/wasm32-wasip1"],
   libraries: ["c++", "-lc"],   // a leading "-l" is stripped
   stackBytes: 8 * 1024 * 1024, // default; 64 KiB to 64 MiB
 };
@@ -74,9 +77,11 @@ traceCCFrontendArguments(request);
 //  "/toolchain/sysroot", "/toolchain/profile.pch"]
 
 traceCCLinkerArguments(request);
-// ["wasm-ld", "-m", "wasm32", "-L/toolchain/lib", "/scratch/main.o",
-//  "/toolchain/runtime.o", "-z", "stack-size=8388608",
-//  "-lc++", "-lc", "-o", "/scratch/program.wasm"]
+// ["wasm-ld", "-m", "wasm32",
+//  "-L/toolchain/sysroot/lib/wasm32-wasip1", "/scratch/main.o",
+//  "/toolchain/sysroot/lib/wasm32-wasip1/crt1-command.o",
+//  "/toolchain/runtime.o", "-z", "stack-size=8388608", "-lc++", "-lc",
+//  "-o", "/scratch/program.wasm"]
 ```
 
 Both builders re-validate the request before returning, so a malformed request
@@ -148,7 +153,8 @@ Before compiling, install the fetched assets into the reactor's virtual
 filesystem:
 
 - Extract `llvm-resources.tar` into the directory named by `sysrootPath`; the
-  archive itself is not a usable sysroot.
+  archive itself is not a usable sysroot. The extracted tree supplies both the
+  library search directory and `crt1-command.o` used in the request above.
 - When using a PCH, write the manifest's `runtimeHeader` to
   `/tracecode_runtime.hpp` and the selected profile's `*-pch-source` to
   `/tracecode_pch.hpp`. Those filenames are recorded inside the PCH. Also write
