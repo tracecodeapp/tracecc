@@ -83,7 +83,7 @@ const request: TraceCCCompileRequest = {
   sysrootPath: "/toolchain/sysroot",
 };
 
-assertTraceCCCompileRequest(request); // throws TypeError on anything unsafe
+assertTraceCCCompileRequest(request); // throws TypeError on a malformed request
 
 traceCCFrontendArguments(request);
 // ["tracecc-cxx", "/work/main.cpp", "/work/main.o", "/toolchain/sysroot"]
@@ -95,9 +95,12 @@ traceCCLinkerArguments(request);
 
 `assertTraceCCCompileRequest` is the security-relevant part: it rejects
 unnormalized paths, `..` traversal, backslashes, null bytes, anything shaped
-like a linker option or a response file, library names that are not plain names,
-invalid stack sizes, and overlong optional lists. Call it on anything derived
-from user input. Your host must still enforce source, byte, and time limits.
+like a linker option or a response file in the optional linker inputs, library
+names that are not plain names, invalid stack sizes, and overlong optional
+lists. Call it on anything derived from user input. Choose `objectPath` and
+`outputPath` yourself inside an admitted virtual-filesystem root; do not copy an
+untrusted filename into either field. Your host must still enforce source,
+byte, and time limits.
 
 The TypeScript types document the optional fields: precompiled headers, runtime
 objects, libraries, and stack size. There are no `-I` or `-D` flags — include
@@ -114,10 +117,12 @@ hash of their own contents. Each one's `tracecc-runtime-manifest.json` lists
 every asset by relative URL, SHA-256, byte size, and media type — deliberately
 with no origin or route baked in.
 
-Copy a directory to a base URL you choose, resolve each relative name against
-it, serve the files as immutable, and verify each against its recorded
-integrity. Mutable `latest` URLs are not supported: because the URL changes
-whenever the bytes do, a cached asset can never be a stale one.
+Copy the whole hash-named directory to a public path that preserves its content
+hash, such as `/tracecc/<consumer-hash>/`, and use that path as the base URL.
+Resolve each relative name against it, serve the files as immutable, and verify
+each against its recorded integrity. Do not flatten releases into a stable path
+or publish a mutable `latest` alias: the URL must change whenever the bytes do,
+so a cached asset can never belong to an older release.
 
 Budget for the download: compiler, sysroot, and one precompiled-header profile
 come to roughly 85 MB. The three profiles (`narrow`, `broad`, `map`)
@@ -130,9 +135,9 @@ TraceCC compiles code that may be entirely attacker-controlled. It transforms
 bytes safely; it does not defend the code it produces.
 
 **TraceCC guarantees** that request paths are normalized and cannot use
-traversal, linker inputs cannot inject raw options or response files, release
-paths stay inside their release root, and executable assets match their pinned
-size and SHA-256.
+traversal, optional runtime-object and library inputs cannot inject raw options
+or response files, release paths stay inside their release root, and executable
+assets match their pinned size and SHA-256.
 
 **You are responsible for** admitting requests, setting byte and time limits,
 binding paths to your virtual filesystem roots, retiring Workers, sending the
