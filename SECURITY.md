@@ -13,17 +13,18 @@ release.
 
 ## What TraceCC defends
 
-TraceCC compiles C and C++ inside a browser Worker, and assumes every request is
-attacker-controlled: source, paths, object files, library names, manifests, and
-downloaded assets can all be hostile.
+TraceCC compiles C and C++ inside a browser Worker. Source, optional runtime
+objects, library inputs, manifests, and downloaded assets may all be hostile.
+The embedder must choose object, output, sysroot, and precompiled-header paths
+inside its own admitted virtual-filesystem mounts rather than copying raw user
+filenames into those fields.
 
 Breaking any of these invariants is a vulnerability:
 
-- Request paths cannot use traversal, and linker inputs cannot inject raw
-  options or response files.
+- Request paths cannot use traversal, and the hardened optional runtime-object
+  and library inputs cannot inject raw options or response files.
 - Release paths stay inside their release root and do not follow symlinks.
 - Executable assets match their pinned byte size and SHA-256 digest.
-- Resource limits and Worker isolation cannot be bypassed.
 
 In scope: request validation, compiler and linker argument construction, virtual
 filesystem access, immutable release preparation and verification, and
@@ -34,10 +35,10 @@ package-owned runtime assets.
 TraceCC is a library, not a hosted compilation service, and it never runs the
 code it compiles.
 
-You own request admission, path-to-mount policy, source and time limits, browser
-isolation headers, Worker termination, self-hosted asset delivery, and the
-sandbox that executes compiled output. A weakness in your own execution sandbox
-is not a TraceCC vulnerability — see
+You own request admission, host-generated object and output paths,
+path-to-mount policy, source and time limits, browser isolation headers, Worker
+termination, self-hosted asset delivery, and the sandbox that executes compiled
+output. A weakness in your own execution sandbox is not a TraceCC vulnerability — see
 [Security and status](README.md#security-and-status) in the README for where the
 line falls.
 
