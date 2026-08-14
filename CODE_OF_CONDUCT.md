@@ -1,19 +1,26 @@
 # Code of Conduct
 
-We are committed to a respectful, harassment-free project for everyone.
-Contributors must communicate constructively, respect differing experience and
-viewpoints, accept responsibility for mistakes, and focus criticism on the
-work rather than the person.
+TraceCC should be a respectful, harassment-free project for everyone. This
+applies in repository spaces, and whenever someone represents the project in
+public.
+
+## What we expect
+
+Communicate constructively, respect differing experience and viewpoints, accept
+responsibility for mistakes, and aim criticism at the work rather than the
+person.
 
 Harassment, threats, discriminatory language, sexualized conduct, deliberate
 intimidation, and publishing another person's private information are not
-acceptable in project spaces.
+acceptable.
 
-Report conduct concerns through GitHub's private vulnerability-reporting form
-and begin the report title with `Code of Conduct`. Maintainers may edit or
-remove contributions, comments, issues, or other participation that violates
-this policy, and may temporarily or permanently restrict participation. Reports
-will be handled as confidentially as practical and without retaliation.
+## Reporting
 
-This policy applies in repository spaces and when someone represents the
-project in public.
+Report conduct concerns through
+[GitHub's private reporting form](https://github.com/tracecodeapp/tracecc/security/advisories/new),
+with a title beginning `Code of Conduct`. Reports are handled as confidentially
+as practical and without retaliation.
+
+Maintainers may edit or remove contributions, comments, issues, or other
+participation that violates this policy, and may temporarily or permanently
+restrict participation.

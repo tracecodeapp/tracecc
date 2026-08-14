@@ -1,5 +1,9 @@
 # TraceCC architecture
 
+How responsibility is divided between TraceCC and the app embedding it, and what
+each release layer guarantees. Start with the [README](../README.md) if you have
+not read it yet.
+
 ## Decision
 
 TraceCC exposes a fixed browser compiler contract rather than a general Clang
@@ -39,6 +43,27 @@ execution sandbox only as untrusted bytes.
 
 No compiler linear memory, writable filesystem state, file descriptor, or
 JavaScript object crosses into an untrusted runner.
+
+## Reactor interface
+
+The reactor is one re-entrant WASI module acting as both compiler and linker.
+The embedder's host instantiates it once and calls its exports:
+
+| Export | Purpose |
+| --- | --- |
+| `tracecc_run(argc, argv)` | Run one command; returns an exit code |
+| `tracecc_alloc(size)` / `tracecc_free(ptr)` | Allocate the argv storage the host owns |
+| `tracecc_can_run_again()` | Whether the reactor is still reusable |
+
+`tracecc_run` dispatches on `argv[0]`, which is why the package's argument
+builders put the program name first. `tracecc-c` and `tracecc-cxx` are the fixed
+frontends and `wasm-ld` is the linker, so a full build is two calls: compile,
+then link.
+
+Check `tracecc_can_run_again()` after every call; when it returns false, retire
+the Worker and start a fresh one. Give each request fresh mutable filesystem
+state — the toolchain mount is immutable and shared, but the scratch space must
+not be reused across requests.
 
 ## Release surfaces
 

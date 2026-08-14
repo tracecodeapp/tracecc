@@ -1,130 +1,175 @@
 # TraceCC
 
-TraceCC is a self-contained browser-native C and C++ compiler toolchain. It
-packages a reproducible compiler, sysroot, runtime header, PCH profiles, and
-runtime objects as one immutable release while leaving execution policy to the
-embedder.
+**Compile C and C++ to WebAssembly in the browser, with no build server.**
 
-The current prototype is based on a pinned YoWASP LLVM fork and contains a
-restricted Clang frontend plus WebAssembly-only LLD in one re-entrant WASI
-reactor. The fixed production contract is intentionally much smaller than a
-general Clang distribution:
+TraceCC is the Clang and LLD toolchain, itself compiled to WebAssembly. Your web
+app hands it C or C++ source and gets back a WebAssembly module. Nothing is
+uploaded, and there is no compile farm to run.
 
-- C17 or C++23 source in, WebAssembly object out
-- WebAssembly object files in, WASI command module out
-- `wasm32-wasip1`, `-O0`, no LLVM bitcode inputs
-- no native targets, debug output, sanitizers, coverage, LTO, plugins, or
-  offload toolchains
+TraceCC never runs the module it produces. It is a compiler you embed, not a
+service you call: you supply the Web Worker, the WASI host it runs in, and the
+sandbox where the compiled output executes. How to safely run untrusted code
+depends on your app, so TraceCC leaves that choice to you.
 
-TraceCC never instantiates compiled output. An embedder may keep the trusted
-compiler Worker warm, but each untrusted module should execute in a separately
-disposable sandbox, memory, process scope, and mutable filesystem.
+> **Pre-release `0.1.1`.** The API, the request protocol, and the toolchain
+> assets can change between minor versions.
 
-## Repository boundary
+## What it does, and what it does not
 
-This repository owns:
+Supported:
 
-- the pinned LLVM/Clang/LLD source revision and downstream patch set
-- reproducible compiler build configuration
-- the fixed compiler/linker invocation contract
-- immutable toolchain release manifests, hashes, legal notices, and
-  corresponding-source metadata
-- the canonical runtime header, PCH build tools, and consumer-release assembler
-- host-neutral asset and request validation
-- compiler compatibility and browser performance gates
+- Compile one C17 or C++23 translation unit to a WebAssembly object.
+- Link WebAssembly objects and static libraries into a WASI command module.
+- Multi-file builds, nested working directories, explicit output paths, and
+  compiler diagnostics.
+- An optional precompiled header, to cut compile time.
 
-The embedder owns:
+Not supported:
 
-- request admission, source generation, and optional instrumentation
-- the execution sandbox, capabilities, filesystem, and syscall policy
-- result interpretation and application diagnostics
-- compiler Worker leases and disposable untrusted-runner lifecycles
+- Any target other than `wasm32-wasip1`.
+- Optimization — the level is fixed at `-O0`.
+- LLVM bitcode as a linker input.
+- Debug output, sanitizers, coverage, LTO, plugins, or offload toolchains.
 
-See [docs/architecture.md](docs/architecture.md) for the full ownership and
-versioning contract.
+Compile options are fixed in the compiler, not passed per request — a request
+cannot change the target, language standard, or optimization level.
 
-## Status
+## What ships, and what you build
 
-`0.1.1` is the current pre-release integration surface. The deterministic v9r2
-compiler candidate is frozen: its cold startup is statistically flat against
-v8, warm corpus time is lower, and the memory result is inconclusive. Further
-LLVM pruning requires a separately reviewed benchmark result.
+The `@tracecode/tracecc` package does **not** export a `compile()` function. It
+gives you the compiler and the rules for driving it.
 
-The v9r2 identity differs from v9r1 because the build now pins LLVM's embedded
-repository metadata to the public upstream URL and revision. Independent source
-paths therefore produce byte-identical raw and folded reactors.
+**You get** `tracecc-reactor.wasm` (Clang and LLD as a single WebAssembly
+reactor), `llvm-resources.tar` (the sysroot), three precompiled-header profiles
+with matching runtime objects, the canonical `tracecode_runtime.hpp`, and a
+TypeScript library that validates requests and builds the exact compiler and
+linker argument lists.
 
-The generated compiler, sysroot, and toolchain-matched runtime PCH artifacts
-are assembled into an immutable consumer release and tracked under
-`runtime-release/`. The package therefore owns the exact compiler substrate it
-was released with; a clean checkout, CI, and npm packaging all verify the same
-bytes. An embedder chooses where to serve those bytes, not which independently
-versioned bytes to pair with the package.
+**You build** the Web Worker that loads the reactor, the WASI host and virtual
+filesystem it runs against, request admission and limits, an origin to serve the
+assets from, and the sandbox that executes the compiled module — a WASI shim and
+a Worker come before TraceCC compiles anything for you.
 
-`scripts/prepare-toolchain-release.mjs` creates the base compiler release.
-Build the PCH shards from `runtime/tracecode_runtime.hpp` using
-`docs/consumer-release.md`, then create the complete consumer release with:
+[docs/architecture.md](docs/architecture.md) covers the reactor's exports, the
+request lifecycle, and the compatibility keys to check before compiling.
+
+## Install and build a request
+
+Requires Node.js 22 or newer.
 
 ```sh
-TRACECC_TOOLCHAIN_RELEASE_DIR=/path/to/base-release \
-TRACECC_PCH_DIR=/path/to/pch-output \
-  pnpm prepare:consumer-release
+pnpm add @tracecode/tracecc
 ```
 
-Import the generated content-addressed directory into the npm package with:
+The library validates a request and builds the two argument lists the compiler
+expects, one to compile and one to link:
 
-```sh
-TRACECC_CONSUMER_RELEASE_DIR=/path/to/content-addressed-consumer-release \
-  pnpm prepare:package-runtime
-pnpm verify:package
+```ts
+import {
+  TRACECC_COMPILE_PROTOCOL_VERSION,
+  assertTraceCCCompileRequest,
+  traceCCFrontendArguments,
+  traceCCLinkerArguments,
+  type TraceCCCompileRequest,
+} from "@tracecode/tracecc";
+
+const request: TraceCCCompileRequest = {
+  protocolVersion: TRACECC_COMPILE_PROTOCOL_VERSION, // "tracecc-compile-v1"
+  language: "c++23",
+  sourcePath: "/work/main.cpp",
+  source: "int main() { return 0; }\n",
+  objectPath: "/work/main.o",
+  outputPath: "/work/main.wasm",
+  sysrootPath: "/toolchain/sysroot",
+};
+
+assertTraceCCCompileRequest(request); // throws TypeError on anything unsafe
+
+traceCCFrontendArguments(request);
+// ["tracecc-cxx", "/work/main.cpp", "/work/main.o", "/toolchain/sysroot"]
+
+traceCCLinkerArguments(request);
+// ["wasm-ld", "-m", "wasm32", "/work/main.o",
+//  "-z", "stack-size=8388608", "-o", "/work/main.wasm"]
 ```
 
-Commit the resulting content-addressed directory and `runtime-release/manifest.json`
-with the TraceCC release. Ordinary `prepack` verifies this tracked inventory; it
-does not depend on an ignored local cache.
+`assertTraceCCCompileRequest` is the security-relevant part: it rejects
+unnormalized paths, `..` traversal, backslashes, null bytes, anything shaped
+like a linker option or a response file, library names that are not plain names,
+invalid stack sizes, and overlong optional lists. Call it on anything derived
+from user input. Your host must still enforce source, byte, and time limits.
 
-The consumer release must contain its generated
-`tracecc-consumer-lock.json` and `tracecc-runtime-manifest.json`. Package
-preparation verifies every declared byte and fails closed on a stale header,
-PCH shard, compiler, or sysroot.
+The TypeScript types document the optional fields: precompiled headers, runtime
+objects, libraries, and stack size. There are no `-I` or `-D` flags — include
+paths are fixed to the sysroot, so your own headers go into the request's
+virtual filesystem.
 
-The request protocol supports C and C++ translation units, headers, include
-paths, definitions, object output, linking, explicit output paths, and nested
-working directories. Execution remains deliberately outside TraceCC's trust
-boundary.
+## Self-hosting the assets
 
-## Build and verify
+TraceCC does not operate a public CDN or a hosted compile service. You serve the
+runtime assets from an origin you control.
 
-The TypeScript package and source/build manifest can be verified without the
-large generated compiler artifacts:
+The package tracks them under `runtime-release/`, in directories named after the
+hash of their own contents. Each one's `tracecc-runtime-manifest.json` lists
+every asset by relative URL, SHA-256, byte size, and media type — deliberately
+with no origin or route baked in.
 
-```sh
-pnpm install --frozen-lockfile
-pnpm test
-pnpm verify:package
-```
+Copy a directory to a base URL you choose, resolve each relative name against
+it, serve the files as immutable, and verify each against its recorded
+integrity. Mutable `latest` URLs are not supported: because the URL changes
+whenever the bytes do, a cached asset can never be a stale one.
 
-Rebuilding the compiler requires the pinned LLVM checkout and build inputs
-named in `toolchain/manifest.json`:
+Budget for the download: compiler, sysroot, and one precompiled-header profile
+come to roughly 85 MB. The three profiles (`narrow`, `broad`, `map`)
+preinstantiate different amounts of `tracecode_runtime.hpp` — load the smallest
+that covers your code.
 
-```sh
-pnpm bootstrap:toolchain -- --build
-```
+## Security and status
 
-That command verifies the upstream Git revision, WASI SDK archive, Binaryen
-archive, packaged PGO profile, and profile list before building. Use
-`--root=/path/on/a/large/disk` to keep its checkout and build directory off the
-system disk. The equivalent manual invocation is:
+TraceCC compiles code that may be entirely attacker-controlled. It transforms
+bytes safely; it does not defend the code it produces.
 
-```sh
-TRACECC_SOURCE_DIR=/path/to/llvm-project \
-TRACECC_BUILD_DIR=/path/to/build \
-TRACECC_WASI_SDK=/path/to/wasi-sdk \
-TRACECC_PGO_PROFILE=/path/to/merged.profdata \
-TRACECC_PGO_LIST=/path/to/profile-list.txt \
-TRACECC_WASM_OPT=/path/to/wasm-opt \
-pnpm build:toolchain
-```
+**TraceCC guarantees** that request paths are normalized and cannot use
+traversal, linker inputs cannot inject raw options or response files, release
+paths stay inside their release root, and executable assets match their pinned
+size and SHA-256.
 
-TraceCC is independently maintained and is not affiliated with, sponsored by,
-or endorsed by the LLVM Project or YoWASP.
+**You are responsible for** admitting requests, setting byte and time limits,
+binding paths to your virtual filesystem roots, retiring Workers, sending the
+right browser isolation headers, and running compiled output in a disposable
+sandbox with no capabilities meant for trusted code.
+
+`0.1.1` is a pre-release integration surface, not a stable API. The compiler,
+sysroot, and matching runtime artifacts ship as one immutable release tracked in
+this repository, so the package owns the exact compiler it was released with.
+Releases are gated on reproducing that frozen compiler from pinned source, on
+the release descriptor, consumer lock, and runtime manifest agreeing
+byte-for-byte, and on C and C++ compile results agreeing across Chromium,
+Firefox, and WebKit.
+
+Report suspected vulnerabilities privately ([SECURITY.md](SECURITY.md)).
+
+## Licensing
+
+TraceCC is licensed under **AGPL-3.0-only** ([LICENSE](LICENSE)). Review its
+terms before redistributing TraceCC or making a modified version available over
+a network.
+
+The compiler artifacts derive from LLVM, Clang, and LLD via the YoWASP LLVM
+fork, under the Apache License 2.0 with LLVM Exceptions — see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
+[legal/CORRESPONDING_SOURCE.md](legal/CORRESPONDING_SOURCE.md), which describes
+the complete corresponding source for the packaged compiler. TraceCC is
+independently maintained and is not affiliated with or endorsed by the LLVM
+Project or YoWASP.
+
+## Where to go next
+
+| Document | What it covers |
+| --- | --- |
+| [docs/architecture.md](docs/architecture.md) | Ownership boundaries, request lifecycle, reactor exports, release gates |
+| [docs/consumer-release.md](docs/consumer-release.md) | Rebuilding the PCH profiles and assembling a release |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, and building the toolchain from source |
+| [SECURITY.md](SECURITY.md) | Threat model and private reporting |
+| [SUPPORT.md](SUPPORT.md) | Where to ask questions |
+| [CHANGELOG.md](CHANGELOG.md) | Release notes |

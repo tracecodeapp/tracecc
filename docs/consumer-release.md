@@ -1,5 +1,9 @@
 # Consumer release regeneration
 
+How to rebuild the precompiled-header layer and assemble a consumer release.
+This is a maintainer procedure — to *use* TraceCC, see the
+[README](../README.md) instead.
+
 TraceCC compiles against three precompiled-header profiles plus matching
 runtime objects. The canonical header and every build tool needed to regenerate
 them are owned by this repository.

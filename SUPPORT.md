@@ -3,14 +3,26 @@
 TraceCC is pre-release software. Public APIs and toolchain assets may change
 between minor releases.
 
-- Use GitHub Issues for reproducible bugs and narrowly scoped feature requests.
-- Include the TraceCC package version, toolchain release ID, browser and
-  version, minimal source, and diagnostics.
-- Use repository documentation for build and self-hosting questions. TraceCC
-  does not operate a shared public runtime CDN; embedders host the immutable
-  package-owned assets at an origin they control.
-- Do not disclose suspected vulnerabilities in a public issue. Use GitHub's
-  private vulnerability-reporting flow after the repository security policy is
-  approved and published.
+## Where to go
 
-There is currently no guaranteed response time or commercial support SLA.
+**Bugs and narrowly scoped feature requests** — open a
+[GitHub issue](https://github.com/tracecodeapp/tracecc/issues).
+
+**Suspected vulnerabilities** — not a public issue. Follow
+[SECURITY.md](SECURITY.md) and use GitHub private vulnerability reporting.
+
+**Embedding and self-hosting questions** — start with the
+[README](README.md), then [docs/architecture.md](docs/architecture.md) for the
+ownership boundaries and request lifecycle, or
+[docs/consumer-release.md](docs/consumer-release.md) for regenerating releases.
+
+## Filing a good bug report
+
+Include the TraceCC package version and toolchain release ID, your browser and
+its version, the smallest source file that reproduces the problem, and the
+compiler diagnostics you got.
+
+## What to expect
+
+TraceCC is maintained without a guaranteed response time, and there is no
+commercial support SLA.
