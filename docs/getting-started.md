@@ -144,6 +144,17 @@ Do not flatten releases into a stable path and do not publish a mutable
 `latest` alias. The URL has to change whenever the bytes do, so a cached asset
 can never belong to an older release.
 
+Before compiling, install the fetched assets into the reactor's virtual
+filesystem:
+
+- Extract `llvm-resources.tar` into the directory named by `sysrootPath`; the
+  archive itself is not a usable sysroot.
+- When using a PCH, write the manifest's `runtimeHeader` to
+  `/tracecode_runtime.hpp` and the selected profile's `*-pch-source` to
+  `/tracecode_pch.hpp`. Those filenames are recorded inside the PCH. Also write
+  the profile's PCH bytes to `pchPath` and its matching runtime object to the
+  path listed in `runtimeObjects`.
+
 ### Budget for the download
 
 The three profiles (`narrow`, `broad`, `map`) preinstantiate different amounts
