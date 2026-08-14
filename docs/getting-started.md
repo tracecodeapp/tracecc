@@ -94,8 +94,10 @@ your own headers belong in the request's virtual filesystem next to the source.
 Optimization is fixed at `-O0` and the target is always `wasm32-wasip1`; a
 request cannot change either.
 
-For a multi-file build, compile each translation unit to its own object, then
-pass the extra objects as `runtimeObjects` on the final link.
+For a multi-file build, compile each translation unit and copy its object bytes
+back into host-owned memory or storage. Before the final link, write those
+objects into that request's fresh filesystem — or an admitted persistent,
+immutable mount — and list their paths in `runtimeObjects`.
 
 ## What validation does and does not cover
 
@@ -135,6 +137,12 @@ lists every asset by *relative* URL, SHA-256 integrity, byte size, and media
 type — with no origin or route baked in. It groups them as `compilerWasm` and
 `linkerWasm` (both the reactor), `sysroot`, `runtimeHeader`, and a
 `compilerResources` entry per precompiled-header profile.
+
+Use the installed package's `runtime-release/manifest.json` as the root of
+trust. It pins the release files, including `tracecc-runtime-manifest.json`, by
+path, size, and SHA-256. Verify the fetched runtime manifest against that
+package-owned record before trusting any digest inside it. A manifest fetched
+from the same mutable origin as the assets is not a trust anchor by itself.
 
 To host a release:
 
