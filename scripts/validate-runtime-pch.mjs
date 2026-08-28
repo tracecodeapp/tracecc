@@ -53,7 +53,17 @@ try {
       'tracecode_pch.hpp': pchSource,
       'tracecode_runtime.hpp': runtimeHeader,
       'tracecode_pch.hpp.pch': pch,
-      'main.cpp': 'int answer() { return 42; }\n',
+      'main.cpp': [
+        'int main(int argc, char** argv) {',
+        '  tracecode::configure_result_marker_token(argc > 1 ? argv[1] : "");',
+        '  tracecode::configure_trace_marker_token(argc > 2 ? argv[2] : "");',
+        '  tracecode::write_result_json_raw("42");',
+        '  tracecode::configure_result_marker_token("");',
+        '  tracecode::configure_trace_marker_token("");',
+        '  return 0;',
+        '}',
+        '',
+      ].join('\n'),
     },
     {
       fetchProgress: () => {},

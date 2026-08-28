@@ -1,0 +1,111 @@
+{
+  "schema": "tracecc-consumer-lock-v2",
+  "consumerHash": "09c324c0adb0b16d45fc75baf0967a90177179ba9891cd3a243fb2e3eaa1d7fb",
+  "consumerHashAlgorithm": "sha256-canonical-json-tracecc-consumer-release-v2",
+  "toolchain": {
+    "protocolVersion": "tracecc-toolchain-release-v1",
+    "contentHash": "3c58296b0f96f1b912fd33017651f1c80c54bb8874ac17bc1e284cf56af63c22",
+    "artifacts": {
+      "reactor": {
+        "path": "tracecc-reactor.wasm",
+        "bytes": 33478188,
+        "sha256": "02de34842538466bf29e9d6cf14cd0d5e5ff519c9ba390561ccb158105d44d41",
+        "integrity": "sha256-At40hCU4Rmvynp1s8UzQ1eX/UZybo5BWHMsVgQXUTUE=",
+        "mediaType": "application/wasm"
+      },
+      "resources": {
+        "path": "llvm-resources.tar",
+        "bytes": 29112320,
+        "sha256": "d95d2a2bc8408a16c0744996ac47c91bb3c63bb71b94315c9796089b6dda8555",
+        "integrity": "sha256-2V0qK8hAihbAdEmWrEfJG7PGO7cblDFcl5YIm23ahVU=",
+        "mediaType": "application/x-tar"
+      }
+    }
+  },
+  "files": [
+    {
+      "path": "tracecc-reactor.wasm",
+      "size": 33478188,
+      "sha256": "02de34842538466bf29e9d6cf14cd0d5e5ff519c9ba390561ccb158105d44d41",
+      "integrity": "sha256-At40hCU4Rmvynp1s8UzQ1eX/UZybo5BWHMsVgQXUTUE=",
+      "mediaType": "application/wasm"
+    },
+    {
+      "path": "llvm-resources.tar",
+      "size": 29112320,
+      "sha256": "d95d2a2bc8408a16c0744996ac47c91bb3c63bb71b94315c9796089b6dda8555",
+      "integrity": "sha256-2V0qK8hAihbAdEmWrEfJG7PGO7cblDFcl5YIm23ahVU=",
+      "mediaType": "application/x-tar"
+    },
+    {
+      "path": "tracecode_runtime.hpp",
+      "size": 264214,
+      "sha256": "6e89f428f6dbbef21768683bd0413671db78696241ea752eabdf6eca47630ce7",
+      "integrity": "sha256-bon0KPbbvvIXaGg70EE2cdt4aWJB6nUuq99uykdjDOc=",
+      "mediaType": "text/plain"
+    },
+    {
+      "path": "narrow.pch",
+      "size": 21322492,
+      "sha256": "d51fa202cee4aeefbb3a5410655c78179d25be0568b8b1ab63d878929fde6795",
+      "integrity": "sha256-1R+iAs7kru+7OlQQZVx4F50lvgVouLGrY9h4kp/eZ5U=",
+      "mediaType": "application/octet-stream"
+    },
+    {
+      "path": "narrow.source.hpp",
+      "size": 815,
+      "sha256": "48cab141f70c05250751c033fbb0a9e2f916c8eb60bfb98d074f4913570e1005",
+      "integrity": "sha256-SMqxQfcMBSUHUcAz+7Cp4vkWyOtgv7mNB09JE1cOEAU=",
+      "mediaType": "text/plain"
+    },
+    {
+      "path": "narrow.o",
+      "size": 1044755,
+      "sha256": "b13c3f511d271688ee02e92521858b1b011d9c50075cf7d5fcf4de18f7b52f68",
+      "integrity": "sha256-sTw/UR0nFojuAuklIYWLGwEdnFAHXPfV/PTeGPe1L2g=",
+      "mediaType": "application/wasm"
+    },
+    {
+      "path": "broad.pch",
+      "size": 24543704,
+      "sha256": "79baf02ba9237d6b3ca99f80c26578ee8eb9c7c285eb289d9d56d3322ae99427",
+      "integrity": "sha256-ebrwK6kjfWs8qZ+AwmV47o65x8KF6yidnVbTMirplCc=",
+      "mediaType": "application/octet-stream"
+    },
+    {
+      "path": "broad.source.hpp",
+      "size": 7095,
+      "sha256": "30e6b2c9c5a5e4a61a2d2f2f3f6328261e246b3b03860d241fd062e9dbeccb4b",
+      "integrity": "sha256-MOayycWl5KYaLS8vP2MoJh4kazsDhg0kH9Bi6dvsy0s=",
+      "mediaType": "text/plain"
+    },
+    {
+      "path": "broad.o",
+      "size": 1895064,
+      "sha256": "731bc601e4816cd8a360fb4465edf7f2cdcf5fd1591dc238f4e3a884509167b0",
+      "integrity": "sha256-cxvGAeSBbNijYPtEZe338s3PX9FZHcI49OOohFCRZ7A=",
+      "mediaType": "application/wasm"
+    },
+    {
+      "path": "map.pch",
+      "size": 29951952,
+      "sha256": "36cc916f762efb5186a27c94027b8e0f5a2f128a6f523265dff5b799cfaa2409",
+      "integrity": "sha256-NsyRb3Yu+1GGonyUAnuOD1ovEopvUjJl3/W3mc+qJAk=",
+      "mediaType": "application/octet-stream"
+    },
+    {
+      "path": "map.source.hpp",
+      "size": 10708,
+      "sha256": "58768ca71de71bf875ae8e82a6906c7a80c8920a9a85b6271714a11cb193f7f7",
+      "integrity": "sha256-WHaMpx3nG/h1ro6CppBseoDIkgqahbYnFxShHLGT9/c=",
+      "mediaType": "text/plain"
+    },
+    {
+      "path": "map.o",
+      "size": 3374641,
+      "sha256": "695837f26b50b2ef645f0f050b5ed7b69d2b0e5c8f9f9231b7f36b190ed5e100",
+      "integrity": "sha256-aVg38mtQsu9kXw8FC17Xtp0rDlyPn5Ixt/NrGQ7V4QA=",
+      "mediaType": "application/wasm"
+    }
+  ]
+}

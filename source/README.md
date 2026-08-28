@@ -1,7 +1,7 @@
 # TraceCC corresponding-source inputs
 
 This directory contains the non-publicly-reconstructible inputs used to build
-the packaged TraceCC v9r2 reactor:
+the packaged TraceCC v9r1 reactor:
 
 - `tracecc-v9r1.profdata.gz` is the deterministic gzip (`gzip -n -9`) of the
   LLVM instrumentation profile recorded by `toolchain/manifest.json`.

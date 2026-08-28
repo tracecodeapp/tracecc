@@ -119,7 +119,7 @@
     "pgo": {
       "profileSha256": "7e79a147f7fc7f100b028bdffd6c57dfaf646906e4353f653558a453f88b8b28",
       "profileListSha256": "141a544be5a09279d87438e47f1b4ad2968223a924704fcdee433d6dfa297e56",
-      "note": "The pooled training campaign was performance-neutral overall. The deterministic v9r2 candidate retains the exact v9r1 profile-use input; remove it only as a separately benchmarked change."
+      "note": "The pooled training campaign was performance-neutral overall. The deterministic v9r1 lineage retains this exact profile-use input; remove it only as a separately benchmarked change."
     }
   },
   "cmake": {
@@ -148,11 +148,11 @@
     ]
   },
   "candidate": {
-    "name": "v9r2",
-    "rawBytes": 37514888,
-    "rawSha256": "7730d961fda40442300bb40fe022087954e8bd2b22bb14ead7e31fe3bc8d6d99",
-    "foldedBytes": 33472827,
-    "foldedSha256": "0a043fc2f220328603e6b3a19a75f378b327779c92d4a9f1a495cf6b5de57a02",
-    "brotliBytes": 8696029
+    "name": "v9r1",
+    "rawBytes": 37525005,
+    "rawSha256": "73551fbd1249a5721dda4ab2cff56831bad23d250323347f2f12fc726b60af9a",
+    "foldedBytes": 33478188,
+    "foldedSha256": "02de34842538466bf29e9d6cf14cd0d5e5ff519c9ba390561ccb158105d44d41",
+    "brotliBytes": 9275381
   }
 }
