@@ -1,0 +1,140 @@
+{
+  "schema": "tracecc-runtime-assets-v2",
+  "runtime": "tracecc",
+  "runtimeVersion": "tracecc-09c324c0adb0",
+  "contentHash": "09c324c0adb0b16d45fc75baf0967a90177179ba9891cd3a243fb2e3eaa1d7fb",
+  "assets": {
+    "runtimeHeader": {
+      "url": "tracecode_runtime.hpp",
+      "integrity": "sha256-bon0KPbbvvIXaGg70EE2cdt4aWJB6nUuq99uykdjDOc=",
+      "mediaType": "text/plain",
+      "size": 264214,
+      "delivery": {
+        "mutability": "immutable",
+        "address": "content"
+      }
+    },
+    "compilerWasm": {
+      "url": "tracecc-reactor.wasm",
+      "integrity": "sha256-At40hCU4Rmvynp1s8UzQ1eX/UZybo5BWHMsVgQXUTUE=",
+      "mediaType": "application/wasm",
+      "size": 33478188,
+      "delivery": {
+        "mutability": "immutable",
+        "address": "content"
+      }
+    },
+    "linkerWasm": {
+      "url": "tracecc-reactor.wasm",
+      "integrity": "sha256-At40hCU4Rmvynp1s8UzQ1eX/UZybo5BWHMsVgQXUTUE=",
+      "mediaType": "application/wasm",
+      "size": 33478188,
+      "delivery": {
+        "mutability": "immutable",
+        "address": "content"
+      }
+    },
+    "sysroot": {
+      "url": "llvm-resources.tar",
+      "integrity": "sha256-2V0qK8hAihbAdEmWrEfJG7PGO7cblDFcl5YIm23ahVU=",
+      "mediaType": "application/x-tar",
+      "size": 29112320,
+      "delivery": {
+        "mutability": "immutable",
+        "address": "content"
+      }
+    },
+    "compilerResources": {
+      "tracecc-narrow-pch": {
+        "url": "narrow.pch",
+        "integrity": "sha256-1R+iAs7kru+7OlQQZVx4F50lvgVouLGrY9h4kp/eZ5U=",
+        "mediaType": "application/octet-stream",
+        "size": 21322492,
+        "delivery": {
+          "mutability": "immutable",
+          "address": "content"
+        }
+      },
+      "tracecc-narrow-pch-source": {
+        "url": "narrow.source.hpp",
+        "integrity": "sha256-SMqxQfcMBSUHUcAz+7Cp4vkWyOtgv7mNB09JE1cOEAU=",
+        "mediaType": "text/plain",
+        "size": 815,
+        "delivery": {
+          "mutability": "immutable",
+          "address": "content"
+        }
+      },
+      "tracecc-narrow-runtime-object": {
+        "url": "narrow.o",
+        "integrity": "sha256-sTw/UR0nFojuAuklIYWLGwEdnFAHXPfV/PTeGPe1L2g=",
+        "mediaType": "application/wasm",
+        "size": 1044755,
+        "delivery": {
+          "mutability": "immutable",
+          "address": "content"
+        }
+      },
+      "tracecc-broad-pch": {
+        "url": "broad.pch",
+        "integrity": "sha256-ebrwK6kjfWs8qZ+AwmV47o65x8KF6yidnVbTMirplCc=",
+        "mediaType": "application/octet-stream",
+        "size": 24543704,
+        "delivery": {
+          "mutability": "immutable",
+          "address": "content"
+        }
+      },
+      "tracecc-broad-pch-source": {
+        "url": "broad.source.hpp",
+        "integrity": "sha256-MOayycWl5KYaLS8vP2MoJh4kazsDhg0kH9Bi6dvsy0s=",
+        "mediaType": "text/plain",
+        "size": 7095,
+        "delivery": {
+          "mutability": "immutable",
+          "address": "content"
+        }
+      },
+      "tracecc-broad-runtime-object": {
+        "url": "broad.o",
+        "integrity": "sha256-cxvGAeSBbNijYPtEZe338s3PX9FZHcI49OOohFCRZ7A=",
+        "mediaType": "application/wasm",
+        "size": 1895064,
+        "delivery": {
+          "mutability": "immutable",
+          "address": "content"
+        }
+      },
+      "tracecc-map-pch": {
+        "url": "map.pch",
+        "integrity": "sha256-NsyRb3Yu+1GGonyUAnuOD1ovEopvUjJl3/W3mc+qJAk=",
+        "mediaType": "application/octet-stream",
+        "size": 29951952,
+        "delivery": {
+          "mutability": "immutable",
+          "address": "content"
+        }
+      },
+      "tracecc-map-pch-source": {
+        "url": "map.source.hpp",
+        "integrity": "sha256-WHaMpx3nG/h1ro6CppBseoDIkgqahbYnFxShHLGT9/c=",
+        "mediaType": "text/plain",
+        "size": 10708,
+        "delivery": {
+          "mutability": "immutable",
+          "address": "content"
+        }
+      },
+      "tracecc-map-runtime-object": {
+        "url": "map.o",
+        "integrity": "sha256-aVg38mtQsu9kXw8FC17Xtp0rDlyPn5Ixt/NrGQ7V4QA=",
+        "mediaType": "application/wasm",
+        "size": 3374641,
+        "delivery": {
+          "mutability": "immutable",
+          "address": "content"
+        }
+      }
+    }
+  }
+}
