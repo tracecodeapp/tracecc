@@ -1,0 +1,120 @@
+{
+  "headerCommit": "b08d08760c995f43fd58af55b8d1c4487f014b14",
+  "consumerHash": "f71a3114757a12c1b81a9fb60ba3990e525ec36d4f73fdc390df536b3f180172",
+  "profiles": {
+    "narrow": {
+      "pch": {
+        "compilerVersion": "22.0.0-release-noassert-wasm32-frontend.0",
+        "compilerSha256": "c0a51aa19e7809e84303fac072318893dfd7beeffd2d60450f1f2b035f75143d",
+        "compilerBundleSha256": "d7ee1ac5c6f567b46f82cd0bce749e6b677aa5d3603c679c520bef6e1eaa01da",
+        "runtimeHeaderSha256": "6ba21c2b9959ab6d46c5162dd7b31a73b1b7b729e9247c277817b4638c0791d1",
+        "pchSourceSha256": "48cab141f70c05250751c033fbb0a9e2f916c8eb60bfb98d074f4913570e1005",
+        "languageStandard": "c++23",
+        "flags": [
+          "-O0",
+          "-fno-exceptions",
+          "-fpch-instantiate-templates",
+          "-fpch-codegen"
+        ],
+        "instantiateTemplates": true,
+        "commonTypeAnchors": true,
+        "corpusTypeAnchors": false,
+        "mapTypeAnchors": false,
+        "generationMs": 14432.3,
+        "bytes": 21486600,
+        "gzipBytes": 12531896,
+        "brotliBytes": 10600368,
+        "sha256": "3a2debf17e8d61a8ca1fb854a6836a3c94983df5780ce45045845d7952aa3bf2"
+      },
+      "o": {
+        "compilerVersion": "22.0.0-release-noassert-wasm32-frontend.0",
+        "compilerSha256": "c0a51aa19e7809e84303fac072318893dfd7beeffd2d60450f1f2b035f75143d",
+        "compilerBundleSha256": "d7ee1ac5c6f567b46f82cd0bce749e6b677aa5d3603c679c520bef6e1eaa01da",
+        "runtimeHeaderSha256": "6ba21c2b9959ab6d46c5162dd7b31a73b1b7b729e9247c277817b4638c0791d1",
+        "pchSourceSha256": "48cab141f70c05250751c033fbb0a9e2f916c8eb60bfb98d074f4913570e1005",
+        "pchSha256": "3a2debf17e8d61a8ca1fb854a6836a3c94983df5780ce45045845d7952aa3bf2",
+        "generationMs": 10820.4,
+        "bytes": 1087130,
+        "gzipBytes": 222477,
+        "brotliBytes": 175719,
+        "sha256": "4371844b32b496570bf229eb7c347c7c6e52b274f69145bdc7da83a946469ae9"
+      }
+    },
+    "broad": {
+      "pch": {
+        "compilerVersion": "22.0.0-release-noassert-wasm32-frontend.0",
+        "compilerSha256": "c0a51aa19e7809e84303fac072318893dfd7beeffd2d60450f1f2b035f75143d",
+        "compilerBundleSha256": "d7ee1ac5c6f567b46f82cd0bce749e6b677aa5d3603c679c520bef6e1eaa01da",
+        "runtimeHeaderSha256": "6ba21c2b9959ab6d46c5162dd7b31a73b1b7b729e9247c277817b4638c0791d1",
+        "pchSourceSha256": "30e6b2c9c5a5e4a61a2d2f2f3f6328261e246b3b03860d241fd062e9dbeccb4b",
+        "languageStandard": "c++23",
+        "flags": [
+          "-O0",
+          "-fno-exceptions",
+          "-fpch-instantiate-templates",
+          "-fpch-codegen"
+        ],
+        "instantiateTemplates": true,
+        "commonTypeAnchors": false,
+        "corpusTypeAnchors": true,
+        "mapTypeAnchors": false,
+        "generationMs": 15906.1,
+        "bytes": 24710504,
+        "gzipBytes": 13716453,
+        "brotliBytes": 11335029,
+        "sha256": "56a0d3ef497bb6d8f9266176f3287b0d4b4409ca8273266b97ca1f36bfe42deb"
+      },
+      "o": {
+        "compilerVersion": "22.0.0-release-noassert-wasm32-frontend.0",
+        "compilerSha256": "c0a51aa19e7809e84303fac072318893dfd7beeffd2d60450f1f2b035f75143d",
+        "compilerBundleSha256": "d7ee1ac5c6f567b46f82cd0bce749e6b677aa5d3603c679c520bef6e1eaa01da",
+        "runtimeHeaderSha256": "6ba21c2b9959ab6d46c5162dd7b31a73b1b7b729e9247c277817b4638c0791d1",
+        "pchSourceSha256": "30e6b2c9c5a5e4a61a2d2f2f3f6328261e246b3b03860d241fd062e9dbeccb4b",
+        "pchSha256": "56a0d3ef497bb6d8f9266176f3287b0d4b4409ca8273266b97ca1f36bfe42deb",
+        "generationMs": 74783.7,
+        "bytes": 1937439,
+        "gzipBytes": 349376,
+        "brotliBytes": 279155,
+        "sha256": "a3113e09d76d2e068b16eedcc70cd4a9135f6dab09f4da20f029a63001732dd9"
+      }
+    },
+    "map": {
+      "pch": {
+        "compilerVersion": "22.0.0-release-noassert-wasm32-frontend.0",
+        "compilerSha256": "c0a51aa19e7809e84303fac072318893dfd7beeffd2d60450f1f2b035f75143d",
+        "compilerBundleSha256": "d7ee1ac5c6f567b46f82cd0bce749e6b677aa5d3603c679c520bef6e1eaa01da",
+        "runtimeHeaderSha256": "6ba21c2b9959ab6d46c5162dd7b31a73b1b7b729e9247c277817b4638c0791d1",
+        "pchSourceSha256": "58768ca71de71bf875ae8e82a6906c7a80c8920a9a85b6271714a11cb193f7f7",
+        "languageStandard": "c++23",
+        "flags": [
+          "-O0",
+          "-fno-exceptions",
+          "-fpch-instantiate-templates",
+          "-fpch-codegen"
+        ],
+        "instantiateTemplates": true,
+        "commonTypeAnchors": false,
+        "corpusTypeAnchors": false,
+        "mapTypeAnchors": true,
+        "generationMs": 24287.7,
+        "bytes": 30120964,
+        "gzipBytes": 15790330,
+        "brotliBytes": 12801585,
+        "sha256": "a5a02a4a7f22b937de9ed46014f7fc3173eb96cfcf60b261847380045d5238a8"
+      },
+      "o": {
+        "compilerVersion": "22.0.0-release-noassert-wasm32-frontend.0",
+        "compilerSha256": "c0a51aa19e7809e84303fac072318893dfd7beeffd2d60450f1f2b035f75143d",
+        "compilerBundleSha256": "d7ee1ac5c6f567b46f82cd0bce749e6b677aa5d3603c679c520bef6e1eaa01da",
+        "runtimeHeaderSha256": "6ba21c2b9959ab6d46c5162dd7b31a73b1b7b729e9247c277817b4638c0791d1",
+        "pchSourceSha256": "58768ca71de71bf875ae8e82a6906c7a80c8920a9a85b6271714a11cb193f7f7",
+        "pchSha256": "a5a02a4a7f22b937de9ed46014f7fc3173eb96cfcf60b261847380045d5238a8",
+        "generationMs": 69554.6,
+        "bytes": 3417018,
+        "gzipBytes": 521803,
+        "brotliBytes": 418138,
+        "sha256": "8441c90a0fbe08056e7b66ff80931f9067daa4cba86869fbaeacf0f60e87db06"
+      }
+    }
+  }
+}
