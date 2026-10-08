@@ -2,21 +2,21 @@
   "schema": "tracecc-package-runtime-v1",
   "package": {
     "name": "@tracecode/tracecc",
-    "version": "0.1.0"
+    "version": "0.1.2"
   },
-  "releaseId": "tracecc@0.1.0+sha256.fb4b6f41f9e9b7db89b6c8425bb2c6218979219a4150f96619b6461b4b78d294",
-  "consumerHash": "fb4b6f41f9e9b7db89b6c8425bb2c6218979219a4150f96619b6461b4b78d294",
-  "targetPath": "cpp/tracecc/fb4b6f41f9e9b7db89b6c8425bb2c6218979219a4150f96619b6461b4b78d294",
+  "releaseId": "tracecc@0.1.2+sha256.f71a3114757a12c1b81a9fb60ba3990e525ec36d4f73fdc390df536b3f180172",
+  "consumerHash": "f71a3114757a12c1b81a9fb60ba3990e525ec36d4f73fdc390df536b3f180172",
+  "targetPath": "cpp/tracecc/f71a3114757a12c1b81a9fb60ba3990e525ec36d4f73fdc390df536b3f180172",
   "files": [
     {
       "path": "broad.o",
-      "size": 1892879,
-      "sha256": "7faf4e7bb9119fd24421410f80cd5cb986dfe74a2987823112754fed52191a9e"
+      "size": 1937439,
+      "sha256": "a3113e09d76d2e068b16eedcc70cd4a9135f6dab09f4da20f029a63001732dd9"
     },
     {
       "path": "broad.pch",
-      "size": 24543552,
-      "sha256": "92d2b1052825a39d063ccf46249c01a6ac980dc14790a1a3a3212db1498b32b2"
+      "size": 24710504,
+      "sha256": "56a0d3ef497bb6d8f9266176f3287b0d4b4409ca8273266b97ca1f36bfe42deb"
     },
     {
       "path": "broad.source.hpp",
@@ -26,7 +26,7 @@
     {
       "path": "cpp-runtime-manifest.json",
       "size": 4366,
-      "sha256": "3de33d6b0e766e3e3d3dc4775b911d59e2f874dafb11a7c01207b9d5d1433d11"
+      "sha256": "d4ff1f86c2f9124da3f56cd89c7cd23e2594a6dcfa1aebb055e3f01fa026b570"
     },
     {
       "path": "llvm-resources.tar",
@@ -35,13 +35,13 @@
     },
     {
       "path": "map.o",
-      "size": 3372458,
-      "sha256": "d3692dbd7eaea95d398ade64741126fe770eb3305e3b8df05fddd8934efd1385"
+      "size": 3417018,
+      "sha256": "8441c90a0fbe08056e7b66ff80931f9067daa4cba86869fbaeacf0f60e87db06"
     },
     {
       "path": "map.pch",
-      "size": 29951380,
-      "sha256": "7d7ef34e62579d127669c6c3889e16bbbff17f51b9d74481d9f2f391382bd947"
+      "size": 30120964,
+      "sha256": "a5a02a4a7f22b937de9ed46014f7fc3173eb96cfcf60b261847380045d5238a8"
     },
     {
       "path": "map.source.hpp",
@@ -50,13 +50,13 @@
     },
     {
       "path": "narrow.o",
-      "size": 1042570,
-      "sha256": "8a5ff05fae85bc053d4894a20dea4cb84674d028a9103e041047ea71dc4483c7"
+      "size": 1087130,
+      "sha256": "4371844b32b496570bf229eb7c347c7c6e52b274f69145bdc7da83a946469ae9"
     },
     {
       "path": "narrow.pch",
-      "size": 21322216,
-      "sha256": "adbb959bb61e3be1f00e94893c0a8618daeb3ca789bde6b34bf8ee5165ece7f0"
+      "size": 21486600,
+      "sha256": "3a2debf17e8d61a8ca1fb854a6836a3c94983df5780ce45045845d7952aa3bf2"
     },
     {
       "path": "narrow.source.hpp",
@@ -66,7 +66,7 @@
     {
       "path": "tracecc-consumer-lock.json",
       "size": 4175,
-      "sha256": "bddd94d14ecdc9326725a29b0031aa7d0a57c07c01c1adf97915f5da9ba5a345"
+      "sha256": "65949d110537a927a0d795534ade63fe5d1e607a74e3a6e4a7b3ff9816d3115d"
     },
     {
       "path": "tracecc-reactor.wasm",
@@ -75,8 +75,8 @@
     },
     {
       "path": "tracecode_runtime.hpp",
-      "size": 263083,
-      "sha256": "5846c1f262cdf1cc0a2163dfdb950bef2a1348cf670aa5acf0c904d01d7812d1"
+      "size": 263898,
+      "sha256": "6ba21c2b9959ab6d46c5162dd7b31a73b1b7b729e9247c277817b4638c0791d1"
     }
   ]
 }

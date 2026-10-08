@@ -1,0 +1,144 @@
+{
+  "runtime": "cpp",
+  "runtimeVersion": "tracecc-f71a3114757a",
+  "protocolVersion": "browser-runtime-assets-v1",
+  "assetBaseUrl": "/workers/cpp/tracecc/f71a3114757a12c1b81a9fb60ba3990e525ec36d4f73fdc390df536b3f180172/",
+  "workerFormat": "module",
+  "assets": {
+    "worker": {
+      "url": "/workers/cpp-worker.js"
+    },
+    "runtimeHeader": {
+      "url": "tracecode_runtime.hpp",
+      "integrity": "sha256-a6IcK5lZq21GxRYt17Mac7G3tynpJHwneBe0Y4wHkdE=",
+      "mediaType": "text/plain",
+      "size": 263898,
+      "delivery": {
+        "mutability": "immutable",
+        "address": "content"
+      }
+    },
+    "compilerWasm": {
+      "url": "tracecc-reactor.wasm",
+      "integrity": "sha256-At40hCU4Rmvynp1s8UzQ1eX/UZybo5BWHMsVgQXUTUE=",
+      "mediaType": "application/wasm",
+      "size": 33478188,
+      "delivery": {
+        "mutability": "immutable",
+        "address": "content"
+      }
+    },
+    "linkerWasm": {
+      "url": "tracecc-reactor.wasm",
+      "integrity": "sha256-At40hCU4Rmvynp1s8UzQ1eX/UZybo5BWHMsVgQXUTUE=",
+      "mediaType": "application/wasm",
+      "size": 33478188,
+      "delivery": {
+        "mutability": "immutable",
+        "address": "content"
+      }
+    },
+    "sysroot": {
+      "url": "llvm-resources.tar",
+      "integrity": "sha256-2V0qK8hAihbAdEmWrEfJG7PGO7cblDFcl5YIm23ahVU=",
+      "mediaType": "application/x-tar",
+      "size": 29112320,
+      "delivery": {
+        "mutability": "immutable",
+        "address": "content"
+      }
+    },
+    "compilerResources": {
+      "tracecc-narrow-pch": {
+        "url": "narrow.pch",
+        "integrity": "sha256-Oi3r8X6NYajKH7hUpoNqPJSYPfV4DORQRYRdeVKqO/I=",
+        "mediaType": "application/octet-stream",
+        "size": 21486600,
+        "delivery": {
+          "mutability": "immutable",
+          "address": "content"
+        }
+      },
+      "tracecc-narrow-pch-source": {
+        "url": "narrow.source.hpp",
+        "integrity": "sha256-SMqxQfcMBSUHUcAz+7Cp4vkWyOtgv7mNB09JE1cOEAU=",
+        "mediaType": "text/plain",
+        "size": 815,
+        "delivery": {
+          "mutability": "immutable",
+          "address": "content"
+        }
+      },
+      "tracecc-narrow-runtime-object": {
+        "url": "narrow.o",
+        "integrity": "sha256-Q3GESzK0llcL8inrfDR8fG5SsnT2kUW9x9qDqUZGmuk=",
+        "mediaType": "application/wasm",
+        "size": 1087130,
+        "delivery": {
+          "mutability": "immutable",
+          "address": "content"
+        }
+      },
+      "tracecc-broad-pch": {
+        "url": "broad.pch",
+        "integrity": "sha256-VqDT70l7ttj5JmF28yh7DUtECcqCcyZrl8ofNr/kLes=",
+        "mediaType": "application/octet-stream",
+        "size": 24710504,
+        "delivery": {
+          "mutability": "immutable",
+          "address": "content"
+        }
+      },
+      "tracecc-broad-pch-source": {
+        "url": "broad.source.hpp",
+        "integrity": "sha256-MOayycWl5KYaLS8vP2MoJh4kazsDhg0kH9Bi6dvsy0s=",
+        "mediaType": "text/plain",
+        "size": 7095,
+        "delivery": {
+          "mutability": "immutable",
+          "address": "content"
+        }
+      },
+      "tracecc-broad-runtime-object": {
+        "url": "broad.o",
+        "integrity": "sha256-oxE+CddtLgaLFu7cxwzUqRNfbasJ9Nog8CmmMAFzLdk=",
+        "mediaType": "application/wasm",
+        "size": 1937439,
+        "delivery": {
+          "mutability": "immutable",
+          "address": "content"
+        }
+      },
+      "tracecc-map-pch": {
+        "url": "map.pch",
+        "integrity": "sha256-paAqSn8iuTfentRgFPf8MXPrls/PYLJhhHOABF1SOKg=",
+        "mediaType": "application/octet-stream",
+        "size": 30120964,
+        "delivery": {
+          "mutability": "immutable",
+          "address": "content"
+        }
+      },
+      "tracecc-map-pch-source": {
+        "url": "map.source.hpp",
+        "integrity": "sha256-WHaMpx3nG/h1ro6CppBseoDIkgqahbYnFxShHLGT9/c=",
+        "mediaType": "text/plain",
+        "size": 10708,
+        "delivery": {
+          "mutability": "immutable",
+          "address": "content"
+        }
+      },
+      "tracecc-map-runtime-object": {
+        "url": "map.o",
+        "integrity": "sha256-hEHJCg++CAVue2b/gJMfkGfapMuoaGn7rqzw9g6H2wY=",
+        "mediaType": "application/wasm",
+        "size": 3417018,
+        "delivery": {
+          "mutability": "immutable",
+          "address": "content"
+        }
+      }
+    }
+  }
+}
